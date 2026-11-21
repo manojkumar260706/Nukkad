@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Credentials & secrets
+.env
+.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+*.pem
+*.key
+*.cert
+
+# Production builds
+dist/
+build/
+
+# Logs & temp
+*.log
+.DS_Store
+.system_generated/
