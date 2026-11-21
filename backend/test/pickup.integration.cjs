@@ -76,6 +76,17 @@ test('PostgreSQL pickup lifecycle, concurrent stock, split rollback, idempotency
     register('Milk Shop', true), register('Bread Shop', true), register('Shopper'), register('Rival')
   ]);
   const [milkId, breadId] = await Promise.all([list(milk, 'Milk', 2, 40), list(bread, 'Bread', 1, 30)]);
+  const search = await request('/products/search?limit=100');
+  assert.equal(search.code, 200, JSON.stringify(search.data));
+  for (const [productId, storeName, price] of [[milkId, 'Milk Shop', 40], [breadId, 'Bread Shop', 30]]) {
+    const hit = search.data.hits.find(product => product.product_id === productId);
+    assert.equal(hit?.store_name, storeName);
+    assert.equal(hit?.price, price);
+  }
+  const breadListing = search.data.hits.find(product => product.product_id === breadId);
+  const scoped = await request(`/products/search?storeId=${breadListing.store_id}&q=bread%20under%2040`);
+  assert.deepEqual(scoped.data.hits.map(product => product.product_id), [breadId]);
+
   const find = body => request('/shopping-plan', { body: { list: '2 milk and bread', location: 'Demo Lane', ...body } });
   const plan = await find();
   assert.equal(plan.code, 200, JSON.stringify(plan.data));

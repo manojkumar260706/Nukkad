@@ -65,6 +65,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <h3 className="font-semibold text-stone-900 text-sm leading-snug line-clamp-2">
             {product.name}
           </h3>
+          {product.store_name && <p className="mt-1 text-xs font-medium text-nukkad-800">{product.store_name}</p>}
           <p className="text-[11px] text-stone-500 line-clamp-1 mt-1">
             {product.description}
           </p>

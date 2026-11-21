@@ -237,42 +237,29 @@ app.get('/api/products/search', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Enter valid search text and non-negative prices.' });
     }
 
-    if (typeof storeId === 'string') {
-      const pagination = z.object({
-        page: z.coerce.number().int().min(1).max(10000).default(1),
-        limit: z.coerce.number().int().min(1).max(100).default(24)
-      }).safeParse({ page, limit });
-      if (!pagination.success) return res.status(400).json({ error: 'Invalid result page.' });
-      const filter = {
-        ...filters.data, ...pagination.data, category: typeof category === 'string' ? category : undefined,
-        inStockOnly: inStockOnly === 'true', sort: typeof sort === 'string' ? sort : undefined
-      };
-      const rawQuery = typeof q === 'string' ? q : '';
-      const exact = await getStoreCatalog(storeId, rawQuery, filter);
-      const text = parsePriceQuery(rawQuery).text;
-      if (exact.hits.length || !text || process.env.OPENSEARCH_ENABLED === 'false') return res.json(exact);
-      try {
-        const fuzzy = await searchProducts({ storeId, query: text, limit: 100 });
-        return res.json(await getStoreCatalog(storeId, rawQuery, {
-          ...filter, matchedProductIds: fuzzy.hits.map(hit => hit.product_id)
-        }));
-      } catch {
-        return res.json(exact);
-      }
+    const selectedStore = typeof storeId === 'string' ? storeId : undefined;
+    const selectedCity = typeof city === 'string' ? city : undefined;
+    const pagination = z.object({
+      page: z.coerce.number().int().min(1).max(10000).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(24)
+    }).safeParse({ page, limit });
+    if (!pagination.success) return res.status(400).json({ error: 'Invalid result page.' });
+    const filter = {
+      ...filters.data, ...pagination.data, city: selectedCity, category: typeof category === 'string' ? category : undefined,
+      inStockOnly: inStockOnly === 'true', sort: typeof sort === 'string' ? sort : undefined
+    };
+    const rawQuery = typeof q === 'string' ? q : '';
+    const exact = await getStoreCatalog(selectedStore, rawQuery, filter);
+    const text = parsePriceQuery(rawQuery).text;
+    if (exact.hits.length || !text || process.env.OPENSEARCH_ENABLED === 'false') return res.json(exact);
+    try {
+      const fuzzy = await searchProducts({ storeId: selectedStore, city: selectedCity, query: text, limit: 100 });
+      return res.json(await getStoreCatalog(selectedStore, rawQuery, {
+        ...filter, matchedProductIds: fuzzy.hits.map(hit => hit.product_id)
+      }));
+    } catch {
+      return res.json(exact);
     }
-
-    const result = await searchProducts({
-      query: q as string,
-      city: city as string,
-      categoryId: category as string,
-      ...filters.data,
-      sort: sort === 'price-asc' || sort === 'price-desc' ? sort : undefined,
-      inStockOnly: inStockOnly === 'true',
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 24
-    });
-
-    res.json(result);
   } catch (err: any) {
     console.error('Search endpoint error:', err.message);
     res.status(500).json({ error: 'Search failed', details: err.message });

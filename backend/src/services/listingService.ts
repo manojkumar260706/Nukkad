@@ -53,8 +53,8 @@ export async function saveListing(storeId: string, input: z.infer<typeof listing
   }
 }
 
-export async function getStoreCatalog(storeId: string, query: string, filters: {
-  category?: string; minPrice?: number; maxPrice?: number; inStockOnly: boolean;
+export async function getStoreCatalog(storeId: string | undefined, query: string, filters: {
+  city?: string; category?: string; minPrice?: number; maxPrice?: number; inStockOnly: boolean;
   sort?: string; page: number; limit: number; matchedProductIds?: string[];
 }) {
   const { text, range } = parsePriceQuery(query);
@@ -70,7 +70,8 @@ export async function getStoreCatalog(storeId: string, query: string, filters: {
           array_to_string(p.synonyms,' '),c.name)) AS search
       FROM store_inventory si JOIN stores s ON s.id=si.store_id JOIN products p ON p.id=si.product_id
       LEFT JOIN categories c ON c.id=p.category_id
-      WHERE s.id=$1 AND s.is_active IS TRUE AND si.listed AND (NOT $2::boolean OR si.stock>0)
+      WHERE ($1::text IS NULL OR s.id=$1) AND ($13::text IS NULL OR s.city=$13)
+        AND s.is_active IS TRUE AND si.listed AND (NOT $2::boolean OR si.stock>0)
         AND ($3::text IS NULL OR p.category_id=$3)
     ), matches AS (
       SELECT * FROM items WHERE (CASE WHEN $12::text[] IS NOT NULL THEN product_id=ANY($12)
@@ -80,11 +81,11 @@ export async function getStoreCatalog(storeId: string, query: string, filters: {
         AND ($7::numeric IS NULL OR price > $7) AND ($8::numeric IS NULL OR price < $8)
     )
     SELECT *, count(*) OVER()::int AS total FROM matches
-    ORDER BY CASE WHEN $9='price-asc' THEN price END, CASE WHEN $9='price-desc' THEN price END DESC, name, product_id
+    ORDER BY CASE WHEN $9='price-asc' THEN price END, CASE WHEN $9='price-desc' THEN price END DESC, name, store_id, product_id
     LIMIT $10 OFFSET $11
   `, [storeId, filters.inStockOnly, filters.category === 'all' ? null : filters.category, text,
     Math.max(range.gte ?? 0, filters.minPrice ?? 0), Math.min(range.lte ?? Infinity, filters.maxPrice ?? Infinity) === Infinity
       ? null : Math.min(range.lte ?? Infinity, filters.maxPrice ?? Infinity),
-    range.gt, range.lt, filters.sort ?? '', filters.limit, (filters.page - 1) * filters.limit, filters.matchedProductIds]);
+    range.gt, range.lt, filters.sort ?? '', filters.limit, (filters.page - 1) * filters.limit, filters.matchedProductIds, filters.city]);
   return { hits: rows, total: rows[0]?.total ?? 0, source: 'PostgreSQL' };
 }

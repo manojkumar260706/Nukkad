@@ -27,6 +27,7 @@ export const StorefrontPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [products, setProducts] = useState<Product[]>([]);
   const [totalResults, setTotalResults] = useState<number>(0);
+  const [page, setPage] = useState(1);
   const [isSearching, setIsSearching] = useState<boolean>(false);
 
   // Cart State
@@ -34,15 +35,17 @@ export const StorefrontPage: React.FC = () => {
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isRaceModalOpen, setIsRaceModalOpen] = useState<boolean>(false);
 
-  // Default store for shopper is Koramangala
-  const [params] = useSearchParams();
-  const defaultStoreId = params.get('store') || 'store-koramangala';
-  useEffect(() => { setCart([]); }, [defaultStoreId]);
+  const [params, setParams] = useSearchParams();
+  const selectedStoreId = params.get('store') || undefined;
+  const [stores, setStores] = useState<Store[]>([]);
+  const [blockedStoreId, setBlockedStoreId] = useState<string>();
+  const cartStoreId = cart[0]?.product.store_id;
+  const cartStore = stores.find(store => store.id === cartStoreId);
+  const cartStoreName = cart[0]?.product.store_name || cartStore?.name || 'your current store';
 
-  const [store, setStore] = useState<Store>();
   useEffect(() => {
-    fetchStores().then(stores => setStore(stores.find(entry => entry.id === defaultStoreId))).catch(console.error);
-  }, [defaultStoreId]);
+    fetchStores().then(setStores).catch(console.error);
+  }, []);
 
   // Load categories
   useEffect(() => {
@@ -58,7 +61,8 @@ export const StorefrontPage: React.FC = () => {
     try {
       const data = await searchProductsApi({
         q: searchQuery,
-        storeId: defaultStoreId,
+        storeId: selectedStoreId,
+        page,
         category: selectedCategory,
         minPrice: filters.minPrice === '' ? undefined : Number(filters.minPrice),
         maxPrice: filters.maxPrice === '' ? undefined : Number(filters.maxPrice),
@@ -77,7 +81,7 @@ export const StorefrontPage: React.FC = () => {
     } finally {
       if (request === searchRequest.current) setIsSearching(false);
     }
-  }, [searchQuery, selectedCategory, filters, defaultStoreId]);
+  }, [searchQuery, selectedCategory, filters, selectedStoreId, page]);
 
   useEffect(() => {
     searchRequest.current++;
@@ -109,7 +113,13 @@ export const StorefrontPage: React.FC = () => {
 
   // Cart operations
   const handleAddToCart = (product: Product) => {
+    if (cartStoreId && cartStoreId !== product.store_id) {
+      setBlockedStoreId(product.store_id);
+      return;
+    }
+    setBlockedStoreId(undefined);
     setCart((prev) => {
+      if (prev.length && prev[0].product.store_id !== product.store_id) return prev;
       const existing = prev.find((item) => item.product.product_id === product.product_id);
       if (existing) {
         return prev.map((item) =>
@@ -142,6 +152,9 @@ export const StorefrontPage: React.FC = () => {
     address?: string;
     postalCode?: string;
   }) => {
+    if (!cartStoreId || cart.some(item => item.product.store_id !== cartStoreId)) {
+      throw new Error('Your cart must contain items from one store.');
+    }
     // Open during the click so browsers allow the tab before checkout finishes.
     const paymentTab = window.open('about:blank', '_blank');
     let bagAnimation: Animation | undefined;
@@ -154,7 +167,7 @@ export const StorefrontPage: React.FC = () => {
 
     try {
       const { order } = await createOrderApi({
-        storeId: defaultStoreId,
+        storeId: cartStoreId,
         ...orderData,
         items: cart.map((item) => ({
           productId: item.product.product_id,
@@ -203,7 +216,7 @@ export const StorefrontPage: React.FC = () => {
       <div>
         {/* Clean Shopper Navbar */}
         <Navbar
-          location={store ? `${store.locality}, ${store.city}` : undefined}
+          location={selectedStoreId ? stores.find(store => store.id === selectedStoreId)?.locality : 'All stores'}
           cartCount={cartCount}
           cartTotal={cartTotal}
           onOpenCart={() => setIsCartOpen(true)}
@@ -212,18 +225,30 @@ export const StorefrontPage: React.FC = () => {
 
         {/* Clean Search & Category Filter */}
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-          {store?.name && <p className="font-semibold">{store.name}</p>}
+          <label className="flex items-center gap-2 font-semibold">
+            <span>Store</span>
+            <select className="rounded-lg border border-stone-300 bg-white px-3 py-2" value={selectedStoreId || ''} onChange={event => {
+              const next = new URLSearchParams(params);
+              if (event.target.value) next.set('store', event.target.value);
+              else next.delete('store');
+              setPage(1);
+              setParams(next);
+            }}>
+              <option value="">All stores</option>
+              {stores.map(store => <option key={store.id} value={store.id}>{store.name} · {store.locality}</option>)}
+            </select>
+          </label>
           <Link to="/plan" className="rounded-lg border border-nukkad-800 px-3 py-2 font-semibold text-nukkad-900">Plan a shopping list</Link>
         </div>
 
         <SearchBar
           filters={filters}
-          setFilters={setFilters}
+          setFilters={value => { setPage(1); setFilters(value); }}
           searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
+          setSearchQuery={value => { setPage(1); setSearchQuery(value); }}
           categories={categories}
           selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
+          setSelectedCategory={value => { setPage(1); setSelectedCategory(value); }}
           isSearching={isSearching}
           onSearchSubmit={executeSearch}
         />
@@ -259,6 +284,7 @@ export const StorefrontPage: React.FC = () => {
               </p>
               <button
                 onClick={() => {
+                  setPage(1);
                   setSearchQuery('');
                   setSelectedCategory('all');
                 }}
@@ -270,7 +296,7 @@ export const StorefrontPage: React.FC = () => {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 sm:gap-5">
               {products.map((product) => {
-                const cartItem = cart.find((i) => i.product.product_id === product.product_id);
+                const cartItem = cart.find((i) => i.product.store_id === product.store_id && i.product.product_id === product.product_id);
                 return (
                   <ProductCard
                     key={product.id}
@@ -285,12 +311,25 @@ export const StorefrontPage: React.FC = () => {
           )}
         </div>
 
+        {(page > 1 || totalResults > page * 24) && (
+          <nav aria-label="Search pages" className="flex items-center justify-center gap-4 pb-5 text-sm">
+            <button className="rounded-lg border px-3 py-2 disabled:opacity-40" disabled={page === 1 || isSearching} onClick={() => setPage(page - 1)}>Previous</button>
+            <span>Page {page}</span>
+            <button className="rounded-lg border px-3 py-2 disabled:opacity-40" disabled={totalResults <= page * 24 || isSearching} onClick={() => setPage(page + 1)}>Next</button>
+          </nav>
+        )}
+
         {/* Floating Bottom Cart Bar (Deck Slide 1: "2 items · ₹450 View cart ›") */}
         {cartCount > 0 && (
           <div className="fixed bottom-4 inset-x-0 z-30 px-4 sm:px-6 pointer-events-none">
             <div className="max-w-md mx-auto pointer-events-auto">
+              {blockedStoreId && blockedStoreId !== cartStoreId && (
+                <p role="alert" className="mb-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                  Your cart contains items from {cartStoreName}. Check out or clear your cart before adding items from another store.
+                </p>
+              )}
               <button
-                onClick={() => setIsCartOpen(true)}
+                onClick={() => { setBlockedStoreId(undefined); setIsCartOpen(true); }}
                 className="w-full bg-nukkad-900 hover:bg-black text-white py-3.5 px-5 rounded-2xl shadow-xl flex items-center justify-between transition-all transform active:scale-[0.99] border border-nukkad-800"
               >
                 <div className="flex items-center gap-3">
@@ -302,7 +341,7 @@ export const StorefrontPage: React.FC = () => {
                       {cartCount} {cartCount === 1 ? 'item' : 'items'} · ₹{cartTotal}
                     </span>
                     <span className="text-[11px] text-emerald-300/80 leading-tight">
-                      Pickup or local delivery
+                      {cartStoreName}
                     </span>
                   </div>
                 </div>
@@ -326,8 +365,8 @@ export const StorefrontPage: React.FC = () => {
         customerName={customer?.name || ''}
         customerPhone={customer?.phone || ''}
         signedIn={Boolean(customer)}
-        storeAddress={store?.address}
-        storePin={store?.pin ?? undefined}
+        storeAddress={cartStore?.address}
+        storePin={cartStore?.pin ?? undefined}
         items={cart}
         onUpdateQuantity={handleUpdateQuantity}
         onClearCart={handleClearCart}
