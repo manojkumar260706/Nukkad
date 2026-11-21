@@ -1,6 +1,6 @@
 import React from 'react';
 import { Product } from '../types';
-import { Plus, Minus } from 'lucide-react';
+import { Plus, Minus, ImageOff } from 'lucide-react';
 
 interface ProductCardProps {
   product: Product;
@@ -15,6 +15,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onAddToCart,
   onUpdateQuantity
 }) => {
+  const [failedImage, setFailedImage] = React.useState<string>();
+  const imageAvailable = product.image_url && failedImage !== product.image_url;
   const isOutOfStock = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= product.low_stock_threshold;
   const discountPercent = product.mrp > product.price
@@ -22,15 +24,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     : 0;
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 overflow-hidden hover:border-nukkad-400 hover:shadow-md transition-all flex flex-col justify-between group">
+    <div className="bg-white rounded-3xl border border-stone-200/80 overflow-hidden shadow-sm hover:border-nukkad-400 hover:shadow-md transition-shadow flex flex-col justify-between group">
       {/* Product Image & Badges */}
-      <div className="relative p-4 pb-0 bg-stone-50/60 flex items-center justify-center min-h-[160px]">
-        <img
+      <div className="relative m-2 aspect-square overflow-hidden rounded-2xl bg-[#f9f6ef]">
+        {imageAvailable ? <img
           src={product.image_url}
           alt={product.name}
-          className="h-32 w-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-200"
+          onError={() => setFailedImage(product.image_url)}
+          className="h-full w-full object-contain"
           loading="lazy"
-        />
+          decoding="async"
+        /> : <div className="grid h-full place-content-center justify-items-center gap-2 p-3 text-center text-xs text-stone-600">
+          <ImageOff size={24} strokeWidth={1.4} aria-hidden="true" />
+          <span>Image unavailable</span>
+        </div>}
 
         {/* Unit badge (top right) */}
         <span className="absolute top-2.5 right-2.5 bg-white/90 backdrop-blur-xs border border-stone-200 text-stone-700 text-[11px] font-mono font-medium px-2 py-0.5 rounded-md shadow-xs">
@@ -59,16 +66,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       {/* Product Information */}
       <div className="p-4 flex-1 flex flex-col justify-between">
         <div>
-          <div className="text-[11px] font-medium text-stone-500 uppercase tracking-wider mb-0.5">
-            {product.brand}
-          </div>
+          {(product.brand || product.category_name) && <p className="mb-1 truncate text-[11px] font-medium text-stone-500">
+            {product.brand || product.category_name}
+          </p>}
           <h3 className="font-semibold text-stone-900 text-sm leading-snug line-clamp-2">
             {product.name}
           </h3>
           {product.store_name && <p className="mt-1 text-xs font-medium text-nukkad-800">{product.store_name}</p>}
-          <p className="text-[11px] text-stone-500 line-clamp-1 mt-1">
-            {product.description}
-          </p>
+
         </div>
 
         {/* Price & Action Row */}

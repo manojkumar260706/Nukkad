@@ -141,7 +141,7 @@ private final class BundledStorefront: NSObject, WKURLSchemeHandler {
 
         let mimeTypes = [
             "html": "text/html", "js": "application/javascript", "css": "text/css",
-            "png": "image/png", "webmanifest": "application/manifest+json", "svg": "image/svg+xml"
+            "png": "image/png", "jpg": "image/jpeg", "webmanifest": "application/manifest+json", "svg": "image/svg+xml"
         ]
         task.didReceive(URLResponse(url: requested, mimeType: mimeTypes[file.pathExtension],
                                     expectedContentLength: data.count, textEncodingName: nil))

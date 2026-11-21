@@ -96,8 +96,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
         <button type="button" aria-expanded={showFilters} aria-controls="product-filters"
-          className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
+          className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold"
           onClick={() => {
             if (!showFilters) {
               setDraft(filters);
@@ -107,6 +108,19 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           }}>
           <SlidersHorizontal className="h-4 w-4" /> Filters {filterCount > 0 && `(${filterCount})`}
         </button>
+
+          <div aria-label="Browse categories" className="flex min-w-0 flex-1 gap-2 overflow-x-auto py-1">
+            {[{ id: 'all', name: 'All' }, ...categories].map(category =>
+              <button key={category.id} type="button" aria-pressed={selectedCategory === category.id} onClick={() => {
+                setSelectedCategory(category.id);
+                setDraftCategory(category.id);
+              }} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm ${selectedCategory === category.id
+                ? 'border-nukkad-900 bg-nukkad-900 text-white' : 'border-stone-200 bg-white text-stone-700 hover:border-nukkad-600'}`}>
+                {category.name}
+              </button>
+            )}
+          </div>
+        </div>
 
         {showFilters && (
           <form id="product-filters" className="grid gap-4 rounded-xl border border-stone-200 bg-stone-50 p-4"

@@ -1,3 +1,4 @@
+import { installSampleCatalog } from './catalog';
 import bcrypt from 'bcryptjs';
 import { pool } from '../config/db';
 
@@ -441,6 +442,7 @@ export async function seed() {
       }
     }
 
+    await installSampleCatalog(client);
     await client.query('COMMIT');
     console.log('Database seeded with stores, auth accounts, products & inventory.');
   } catch (err: any) {

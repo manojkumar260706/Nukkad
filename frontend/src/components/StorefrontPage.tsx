@@ -249,11 +249,6 @@ export const StorefrontPage: React.FC = () => {
           onOpenRaceTest={shopkeeper && import.meta.env.VITE_ENABLE_DEMO_ACCOUNTS === 'true' ? () => setIsRaceModalOpen(true) : undefined}
         />
 
-        {/* Clean Search & Category Filter */}
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-          <p className="text-stone-600">{location ? 'Nearest available listing shown for each product' : 'All stores · Allow location access to see the nearest listings'}</p>
-        </div>
-
         <SearchBar
           filters={filters}
           setFilters={value => { setPage(1); setFilters(value); }}
@@ -266,21 +261,15 @@ export const StorefrontPage: React.FC = () => {
           onSearchSubmit={executeSearch}
         />
 
-        {/* Minimal Hero Bar */}
-        <div className="bg-cream/50 border-b border-stone-200 py-5 px-4 sm:px-6">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="font-serif font-bold text-xl sm:text-2xl text-stone-900 tracking-tight">
-                Fresh Groceries & Essentials
+              <h1 className="font-serif text-2xl font-bold tracking-tight text-nukkad-950 sm:text-3xl">
+                {categories.find(category => category.id === selectedCategory)?.name || 'Groceries & essentials'}
               </h1>
-              <p className="text-xs text-stone-500 font-sans mt-0.5">
-                Every unit shown is guaranteed in-stock on physical shelves.
-              </p>
+              <p className="mt-1 text-sm text-stone-600">{location ? 'Nearest available listings' : 'Browse listings from all stores'}</p>
             </div>
-
-            <div className="text-xs font-mono text-stone-600 bg-white px-3 py-1.5 rounded-lg border border-stone-200 self-start sm:self-auto shadow-2xs">
-              Showing <span className="font-bold text-nukkad-950">{totalResults}</span> items
-            </div>
+            <p aria-live="polite" className="text-sm text-stone-600">{totalResults} {totalResults === 1 ? 'item' : 'items'}</p>
           </div>
         </div>
 
@@ -290,7 +279,7 @@ export const StorefrontPage: React.FC = () => {
             <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-stone-300 p-8 space-y-3">
               <SearchIcon className="w-10 h-10 text-stone-400 mx-auto stroke-1" />
               <h3 className="font-serif font-bold text-lg text-stone-800">
-                No items found for "{searchQuery}"
+                {searchQuery.trim() ? `No results for “${searchQuery}”` : 'No products to show'}
               </h3>
               <p className="text-xs text-stone-500 max-w-sm mx-auto">
                 Try searching for staples like "atta", "rice", "oil", or dairy like "amul milk".
@@ -300,6 +289,7 @@ export const StorefrontPage: React.FC = () => {
                   setPage(1);
                   setSearchQuery('');
                   setSelectedCategory('all');
+                  setFilters(defaultSearchFilters);
                 }}
                 className="mt-2 px-4 py-2 bg-nukkad-800 text-white rounded-xl text-xs font-semibold"
               >
@@ -307,7 +297,7 @@ export const StorefrontPage: React.FC = () => {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 sm:gap-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-5">
               {products.map((product) => {
                 const cartItem = cart.find((i) => i.product.store_id === product.store_id && i.product.product_id === product.product_id);
                 return (
