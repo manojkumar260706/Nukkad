@@ -24,7 +24,7 @@ async function providerRequest(url: string, headers: Record<string, string>, bod
     if (!response.ok) throw new Error(String(response.status));
     return await response.json();
   } catch {
-    throw new Error(`${provider} is unavailable. Try again or enter a shopping list directly.`);
+    throw new Error(`${provider} is unavailable. Try again in a moment.`);
   }
 }
 
@@ -32,7 +32,7 @@ export async function interpretShoppingRequest(input: z.infer<typeof assistantIn
   const geminiKey = process.env.GEMINI_API_KEY;
   const sarvamKey = process.env.SARVAM_API_KEY;
   if (!geminiKey || (input.language !== 'en-IN' && !sarvamKey)) {
-    throw new Error('The shopping assistant is missing its provider configuration. You can still enter a shopping list directly.');
+    throw new Error('The shopping assistant is missing its provider configuration.');
   }
   const message = input.language === 'en-IN' ? input.message : z.object({
     translated_text: z.string().trim().min(1).max(4000)
@@ -82,6 +82,6 @@ export async function interpretShoppingRequest(input: z.infer<typeof assistantIn
     const json = response.candidates[0].content.parts.filter(part => !part.thought).map(part => part.text).join('');
     return reply.parse(JSON.parse(json));
   } catch {
-    throw new Error('The shopping assistant returned an unreadable list. Try rephrasing or enter the list directly.');
+    throw new Error('The shopping assistant returned an unreadable list. Try rephrasing your message.');
   }
 }

@@ -34,7 +34,7 @@ export const CustomerLoginPage: React.FC = () => {
       } else {
         await loginCustomer(email.trim(), password);
       }
-      navigate(state?.returnTo === '/plan' ? '/plan' : '/');
+      navigate(state?.returnTo === '/?chat=open' || state?.returnTo === '/plan' ? '/?chat=open' : '/');
     } catch (err: any) {
       setError(err.message || (isSignUp ? 'Registration failed' : 'Login failed'));
     } finally {

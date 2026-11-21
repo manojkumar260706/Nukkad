@@ -1,6 +1,7 @@
-import { FormEvent, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { askShoppingAssistant, checkPayment, Coordinates, createOrderApi, findNearbyStores, findShoppingPlans, NearbyStore, PickupBasket, reserveBaskets, ShoppingItem, ShoppingPlan } from '../api/client';
+import { ArrowLeft, ArrowUp, MapPin, MessageCircle, Mic, Sparkles, Square, Volume2, X } from 'lucide-react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { askShoppingAssistant, checkPayment, Coordinates, createOrderApi, findShoppingPlans, PickupBasket, reserveBaskets, ShoppingItem, ShoppingPlan } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useChatSpeech } from './useChatSpeech';
 
@@ -25,11 +26,19 @@ const basketKey = (basket: PickupBasket) => JSON.stringify([
   basket.store.id, basket.items.map(item => [item.productId, item.quantity]).sort()
 ]);
 
-export function ShoppingPlanner() {
-  const [list, setList] = useState('');
+export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation }: {
+  cartVisible: boolean; cartOpen: boolean; storefrontLocation?: Coordinates
+}) {
+  const [params] = useSearchParams();
+  const [open, setOpen] = useState(params.get('chat') === 'open');
+  const [view, setView] = useState<'chat' | 'compare'>('chat');
+  const launcher = useRef<HTMLButtonElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const transcript = useRef<HTMLDivElement>(null);
   const [location, setLocation] = useState('');
-  const [gps, setGps] = useState<Coordinates>();
-  const [nearby, setNearby] = useState<NearbyStore[]>();
+  const [deviceLocation, setDeviceLocation] = useState<Coordinates>();
+  const gps = location.trim() ? undefined : deviceLocation ?? storefrontLocation;
+  const expanded = open && !cartOpen;
   const [plans, setPlans] = useState<Awaited<ReturnType<typeof findShoppingPlans>>>();
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -54,6 +63,19 @@ export function ShoppingPlanner() {
       ? JSON.parse(sessionStorage.getItem(pendingKey) || 'null')
       : pendingByCustomer[pendingKey]
     : null;
+
+  useEffect(() => {
+    if (expanded) heading.current?.focus();
+  }, [expanded, view]);
+
+  useEffect(() => {
+    if (transcript.current) transcript.current.scrollTop = transcript.current.scrollHeight;
+  }, [chat, busy, expanded, view]);
+
+  function closeChat() {
+    setOpen(false);
+    requestAnimationFrame(() => launcher.current?.focus());
+  }
 
   function rememberPurchase(value: PendingPurchase | null) {
     if (!pendingKey) return;
@@ -80,8 +102,7 @@ export function ShoppingPlanner() {
       setMessage('');
       setSelectedBasket(undefined);
       setPlans(reply.plans ?? undefined);
-      setNearby(reply.plans?.stores);
-      if (reply.plans) setList(parsed);
+      if (reply.plans) setView('compare');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create a plan.');
     } finally {
@@ -140,41 +161,17 @@ export function ShoppingPlanner() {
   }
 
   function locate() {
-    setGps(undefined);
-    setNearby(undefined);
-    setPlans(undefined);
+
     setNotice('Getting your location…');
     if (!navigator.geolocation) {
       setNotice('GPS is unavailable. Enter a locality, address or PIN.');
       return;
     }
     navigator.geolocation.getCurrentPosition(({ coords }) => {
-      setGps({ latitude: coords.latitude, longitude: coords.longitude });
-      setNotice('GPS selected. You can enter a fallback location if there are no nearby matches.');
+      setLocation('');
+      setDeviceLocation({ latitude: coords.latitude, longitude: coords.longitude });
+      setNotice('Using your current location.');
     }, () => setNotice('GPS is unavailable. Enter a locality, address or PIN.'), { timeout: 8000 });
-  }
-
-  async function find(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError('');
-    setPlans(undefined);
-    setNearby(undefined);
-    setSelectedBasket(undefined);
-    try {
-      if (!gps && !location.trim()) throw new Error('Enter a location or use GPS.');
-      if (list.trim()) {
-        const result = await findShoppingPlans({ list, location, gps });
-        setPlans(result);
-        setNearby(result.stores);
-      } else {
-        setNearby(await findNearbyStores({ location, gps }));
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not find stores.');
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function reserve(plan: ShoppingPlan) {
@@ -219,7 +216,7 @@ export function ShoppingPlanner() {
             setSelectedBasket(basket);
           }} className="rounded bg-nukkad-900 px-3 py-2 text-white disabled:opacity-50">
             {purchased ? 'Paid' : `Buy from ${store.name}`}
-          </button> : <Link to="/login" state={{ returnTo: '/plan' }} className="underline">Sign in to buy</Link>}
+          </button> : <Link to="/login" state={{ returnTo: '/?chat=open' }} className="underline">Sign in to buy</Link>}
         </div>
       </section>; })}
       {plan.missing.length > 0 && <p className="text-sm text-amber-900">Missing: {plan.missing.map(item => `${item.quantity} × ${item.name}`).join(', ')}</p>}
@@ -227,64 +224,90 @@ export function ShoppingPlanner() {
         ? <button onClick={() => reserve(plan)} disabled={busy || Boolean(pending) || plan.baskets.some(basket => paid.includes(basketKey(basket)))} className="rounded bg-nukkad-900 px-4 py-2 text-sm text-white">
           {plan.missing.length ? 'Reserve available items' : 'Reserve and pay at pickup'}
         </button>
-        : <Link to="/login" state={{ returnTo: '/plan' }} className="text-sm underline">Sign in to reserve</Link>)}
+        : <Link to="/login" state={{ returnTo: '/?chat=open' }} className="text-sm underline">Sign in to reserve</Link>)}
     </article>;
   }
 
-  return <main className="mx-auto max-w-5xl space-y-5 p-5">
-    <Link to="/" className="text-sm underline">Back to shop</Link>
-    <h1 className="font-serif text-3xl font-bold">Plan a shopping list</h1>
-    <section className="space-y-3 rounded-2xl border bg-white p-4">
-      <h2 className="font-serif text-xl font-bold">Shopping chatbot</h2>
-      {customer ? <>
-        <p className="text-sm text-stone-600">Tell us what you need, then refine the list with messages like “add 2 eggs.” Set your shopping location below. Messages are processed by Gemini and, for translation, Sarvam AI.</p>
-        {chat.length > 0 && <div aria-live="polite" className="max-h-64 space-y-3 overflow-auto rounded bg-stone-50 p-3 text-sm">
-          {chat.map((turn, index) => <div key={index} className="space-y-1">
-            <p><strong>You</strong> · {turn.request}</p>
-            <p><strong>Nukkad</strong> · {turn.reply}</p>
-            {speech.canSpeak && <button type="button" onClick={() => speech.toggleReadAloud(index, turn.reply)}
-              disabled={speech.listening} className="text-nukkad-800 underline disabled:opacity-50">
-              {speech.speaking === index ? 'Stop reading' : 'Read aloud'}
-            </button>}
+  return <div className="fixed right-3 z-40 sm:right-6" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + ' + (cartVisible ? '5.25rem' : '1rem') + ')' }}>
+    {!expanded && !cartOpen && <button ref={launcher} type="button" aria-label="Open shopping assistant"
+      aria-expanded={false} onClick={() => setOpen(true)}
+      className="grid h-14 w-14 place-items-center rounded-full bg-nukkad-900 text-white shadow-xl ring-1 ring-black/10 transition hover:bg-nukkad-800 focus-visible:outline focus-visible:outline-offset-4">
+      <MessageCircle size={25} aria-hidden="true" />
+    </button>}
+    {expanded && <section role="dialog" aria-labelledby="shopping-assistant-heading"
+      onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); closeChat(); } }}
+      className={`flex h-[min(39rem,calc(100dvh-7rem))] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-3xl border border-nukkad-900/10 bg-[#f8faf7] shadow-[0_22px_70px_rgba(13,35,23,0.24)] ${view === 'chat' ? 'w-[25rem]' : 'w-[45rem]'}`}>
+      <header className="flex shrink-0 items-center gap-3 bg-nukkad-900 px-4 py-3 text-white">
+        {view === 'compare' ? <button type="button" aria-label="Back to chat" onClick={() => { setView('chat'); setSelectedBasket(undefined); }} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10 hover:bg-white/20"><ArrowLeft size={19} /></button>
+          : <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10 text-emerald-200"><Sparkles size={20} aria-hidden="true" /></span>}
+        <h2 id="shopping-assistant-heading" tabIndex={-1} ref={heading} className="flex-1 text-base font-semibold outline-none">
+          {view === 'chat' ? 'Nukkad Assistant' : 'Compare baskets'}
+        </h2>
+        <button type="button" aria-label="Close shopping assistant" onClick={closeChat}
+          className="grid h-10 w-10 place-items-center rounded-xl hover:bg-white/15"><X size={21} /></button>
+      </header>
+      {view === 'chat' ? customer ? <>
+        <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-2">
+          <MapPin size={16} className="shrink-0 text-nukkad-800" aria-hidden="true" />
+          <input aria-label="Shopping location" value={location} onChange={event => setLocation(event.target.value)}
+            placeholder={gps ? 'Current location' : 'Locality, city or PIN'}
+            className="min-w-0 flex-1 bg-transparent py-2 text-sm text-stone-800 placeholder:text-stone-500 focus-visible:outline-nukkad-600" />
+          <button type="button" onClick={locate} className="shrink-0 rounded-lg bg-nukkad-50 px-2.5 py-2 text-xs font-semibold text-nukkad-900">Use GPS</button>
+        </div>
+        <div ref={transcript} role="log" aria-label="Conversation" className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
+          <p className="mr-7 w-fit rounded-2xl rounded-tl-sm border border-stone-200 bg-white px-4 py-3 text-sm leading-relaxed text-stone-800">
+            What are you shopping for? I’ll compare baskets from nearby stores.
+          </p>
+          {!chat.length && !message && <button type="button" onClick={() => setMessage('I need two cartons of milk and a loaf of bread')}
+            className="rounded-full border border-nukkad-200 bg-white px-3 py-2 text-xs font-medium text-nukkad-900 hover:bg-nukkad-50">Try milk and bread</button>}
+          {chat.map((turn, index) => <div key={index} className="space-y-2">
+            <p className="ml-auto max-w-[88%] w-fit break-words rounded-2xl rounded-tr-sm bg-nukkad-900 px-4 py-3 text-sm leading-relaxed text-white">{turn.request}</p>
+            <div className="mr-7 w-fit max-w-full break-words rounded-2xl rounded-tl-sm border border-stone-200 bg-white px-4 py-3 text-sm leading-relaxed text-stone-800">
+              <p>{turn.reply}</p>
+              {speech.canSpeak && <button type="button" onClick={() => speech.toggleReadAloud(index, turn.reply)}
+                disabled={speech.listening} className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-nukkad-800 disabled:opacity-50">
+                <Volume2 size={15} aria-hidden="true" /> {speech.speaking === index ? 'Stop reading' : 'Read aloud'}
+              </button>}
+            </div>
           </div>)}
-        </div>}
-        <form onSubmit={ask} className="space-y-2">
-          <label className="grid gap-1 text-sm">Message language
-            <select disabled={speech.listening} className="rounded border p-2" value={language} onChange={event => setLanguage(event.target.value)}>
-              <option value="auto">Detect automatically</option><option value="en-IN">English</option>
+          {busy && <p className="w-fit animate-pulse rounded-2xl bg-nukkad-50 px-4 py-3 text-sm text-nukkad-900">Checking your request…</p>}
+          {(plans || pending) && <button type="button" onClick={() => { setView('compare'); setError(''); }} className="rounded-xl bg-nukkad-100 px-3 py-2 text-sm font-semibold text-nukkad-900">{plans ? 'View basket comparison' : 'View pending checkout'}</button>}
+          {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+        </div>
+        <form onSubmit={ask} className="shrink-0 space-y-2 border-t border-stone-200 bg-white px-3 py-3">
+          <div className="flex items-end gap-1.5 rounded-2xl border border-stone-200 bg-stone-50 p-1.5 focus-within:border-nukkad-600">
+            <textarea aria-label="Message Nukkad" rows={2} required maxLength={1000} value={message}
+              onChange={event => setMessage(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  if (!busy && !speech.listening && message.trim()) event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              placeholder="What do you need?" className="min-w-0 flex-1 resize-none bg-transparent px-2 py-1.5 text-base outline-none sm:text-sm" />
+            {speech.canDictate && <button type="button" disabled={busy || speech.speaking !== undefined} onClick={() => speech.toggleDictation(language)}
+              aria-label={speech.listening ? 'Stop dictation' : 'Use microphone'} title={speech.listening ? 'Stop dictation' : 'Use microphone'}
+              className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl disabled:opacity-40 ${speech.listening ? 'bg-red-100 text-red-800' : 'text-nukkad-900 hover:bg-nukkad-100'}`}>
+                {speech.listening ? <Square size={16} /> : <Mic size={17} />}
+            </button>}
+            <button type="submit" aria-label="Send message" title="Send message" disabled={busy || speech.listening || !message.trim()}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-nukkad-900 text-white disabled:opacity-40"><ArrowUp size={20} /></button>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <select aria-label="Message language" disabled={speech.listening} value={language} onChange={event => setLanguage(event.target.value)}
+              className="max-w-[11rem] bg-white text-xs font-medium text-stone-700">
+              <option value="auto">Auto · English mic</option><option value="en-IN">English</option>
               <option value="hi-IN">Hindi</option><option value="kn-IN">Kannada</option>
               <option value="ta-IN">Tamil</option><option value="te-IN">Telugu</option><option value="ml-IN">Malayalam</option>
             </select>
-          </label>
-          <label className="grid gap-1 text-sm">What would you like to buy?
-            <textarea required maxLength={1000} value={message} onChange={event => setMessage(event.target.value)}
-              placeholder="I need two cartons of milk and a loaf of bread" className="rounded border p-2" />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button disabled={busy || speech.listening} className="rounded bg-nukkad-900 px-4 py-2 text-sm text-white disabled:opacity-50">Send to chatbot</button>
-            {speech.canDictate && <button type="button" disabled={busy || speech.speaking !== undefined}
-              onClick={() => speech.toggleDictation(language)} className="rounded border border-nukkad-800 px-4 py-2 text-sm text-nukkad-900 disabled:opacity-50">
-              {speech.listening ? 'Stop dictation' : 'Use microphone'}
-            </button>}
+            <span className="text-xs text-stone-500">Gemini · Sarvam AI</span>
           </div>
-          <p className="text-xs text-stone-600">{speech.canDictate
-            ? 'Choose a language before dictating. Automatic mode uses English for the microphone.'
-            : 'Microphone dictation is unavailable in this browser. You can type your message.'}</p>
-          {speech.voiceStatus && <p role="status" className="text-sm text-stone-700">{speech.voiceStatus}</p>}
+          {(speech.voiceStatus || notice) && <p role="status" className="text-xs text-stone-600">{speech.voiceStatus || notice}</p>}
         </form>
-      </> : <Link to="/login" state={{ returnTo: '/plan' }} className="text-sm underline">Sign in to use the chatbot</Link>}
-    </section>
-    <form onSubmit={find} className="space-y-3 rounded-2xl border bg-white p-4">
-      <label className="grid gap-1 text-sm">Shopping list
-        <textarea value={list} onChange={e => setList(e.target.value)} maxLength={1500} className="rounded border p-2" placeholder="2 milk and bread" />
-      </label>
-      <label className="grid gap-1 text-sm">Locality, city, address or PIN
-        <input value={location} onChange={e => { setLocation(e.target.value); setGps(undefined); }} className="rounded border p-2" placeholder="Demo Lane" />
-      </label>
-      <button type="button" onClick={locate} className="mr-3 text-sm underline">Use my location</button>
-      <button disabled={busy} className="rounded bg-nukkad-900 px-4 py-2 text-sm text-white">{list.trim() ? 'Compare baskets' : 'Find stores'}</button>
-      {notice && <p role="status" className="text-sm text-stone-600">{notice}</p>}
-    </form>
+      </> : <div className="grid flex-1 place-content-center gap-3 p-6 text-center">
+        <p className="text-sm text-stone-700">Sign in to compare nearby baskets with Nukkad Assistant.</p>
+        <Link to="/login" state={{ returnTo: '/?chat=open' }} className="mx-auto rounded-xl bg-nukkad-900 px-4 py-2 text-sm font-semibold text-white">Sign in</Link>
+      </div> : <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
     {pending && <section className="space-y-2 rounded-xl border bg-white p-4">
       <h2 className="font-semibold">Checkout in progress · {pending.storeName}</h2>
       <p className="text-sm">Finish or cancel this checkout before buying from another store.</p>
@@ -294,7 +317,7 @@ export function ShoppingPlanner() {
         <button disabled={busy} onClick={() => verifyPurchase(true)} className="underline">Cancel checkout</button>
       </div>
     </section>}
-    {selectedBasket && !pending && customer && <form onSubmit={buy} className="fixed inset-x-4 bottom-4 z-40 mx-auto max-w-lg space-y-3 rounded-xl border bg-white p-4 shadow-xl">
+    {selectedBasket && !pending && customer && <form onSubmit={buy} className="space-y-3 rounded-xl border border-nukkad-200 bg-white p-4 shadow-sm">
       <h2 className="font-semibold">Buy from {selectedBasket.store.name}</h2>
       <p className="text-sm">Pay {money(selectedBasket.items.reduce((total, item) => total + item.quantity * item.expectedPrice, 0))} online and pick up at the store.</p>
       <label className="grid gap-1 text-sm">Phone number
@@ -307,28 +330,21 @@ export function ShoppingPlanner() {
       </div>
     </form>}
     {error && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>}
-    {nearby && <section>
-      <h2 className="font-serif text-xl font-bold">Nearby stores</h2>
-      {!nearby.length ? <p>No matches. Try a locality, city, address or PIN.</p> : <ul className="mt-2 grid gap-2 sm:grid-cols-2">
-        {nearby.map(store => <li key={store.id} className="rounded border bg-white p-3">
-          <p className="font-semibold">{store.name}</p>
-          <p className="text-xs">{store.address || `${store.locality}, ${store.city}`} · {store.distance === null ? 'Distance unavailable' : `${store.distance.toFixed(1)} km estimated`}</p>
-        </li>)}
-      </ul>}
-      <p className="mt-2 text-xs text-stone-600">Distances are straight-line estimates. Typed locations with a known store location use that store as the starting point.</p>
-    </section>}
-    {plans && nearby?.length ? <>
+    {notice && <p role="status" className="text-sm text-stone-700">{notice}</p>}
+    {plans && !plans.stores.length && <p className="rounded-xl border bg-white p-4 text-sm">No stores matched your location. Go back to chat and try a locality or PIN code.</p>}
+    {plans && plans.stores.length > 0 ? <>
       {plans.unmatched.length > 0 && <p className="rounded bg-amber-50 p-3 text-sm">No nearby listing matches: {plans.unmatched.map(item => item.name).join(', ')}</p>}
+      {plans.split && <section className="space-y-3">
+        <h2 className="font-serif text-xl font-bold">Split pickup</h2>
+        {planCard(plans.split, 'Recommended split')}
+      </section>}
       <section className="space-y-3">
         <h2 className="font-serif text-xl font-bold">Single-store options</h2>
         <p className="text-sm text-stone-600">We rank fewer missing items first, then more units filled, then lower basket price plus ₹8 per estimated kilometre. Unknown distances are excluded from the estimate.</p>
         {plans.singles.map(plan => <div key={plan.baskets[0].store.id}>{planCard(plan, plan.baskets[0].store.name)}</div>)}
       </section>
-      <section className="space-y-3">
-        <h2 className="font-serif text-xl font-bold">Split pickup</h2>
-        <p className="text-sm text-stone-600">Full-list splits are ranked by basket price, ₹8 per estimated kilometre and ₹25 per extra stop. Estimated kilometres are the sum of the known straight-line distances to the shops. Only the basket price is payable.</p>
-        {plans.split ? planCard(plans.split, 'Recommended split') : <p>No complete two- or three-store split found.</p>}
-      </section>
     </> : null}
-  </main>;
+      </div>}
+    </section>}
+  </div>;
 }

@@ -178,7 +178,7 @@ The script bundles the storefront in the app and points it at the live Render AP
 
 ### Shopping-list pickup
 
-The shopper can open **Plan a shopping list**, use GPS or type a locality, city, address or PIN, and compare baskets. GPS uses active stores within 10 km of the reported point. A typed match uses a matching store with coordinates as an approximate starting point when available. Without a known point, matching locations remain visible with distance unavailable.
+The shopper can open the **Nukkad Assistant** message bubble, use GPS or type a locality, city, address or PIN, and compare baskets. GPS uses active stores within 10 km of the reported point. A typed match uses a matching store with coordinates as an approximate starting point when available. Without a known point, matching locations remain visible with distance unavailable.
 
 Store-specific listings own price, name, unit, listing state, and available stock. Unlisting keeps historical orders and reservations. The list planner prices from PostgreSQL. Travel and extra-stop weights rank options and are not added to the amount payable. The split planner checks up to 12 nearby stores, comparing pairs and triples against current available quantities.
 
@@ -194,12 +194,12 @@ Store-specific listings own price, name, unit, listing state, and available stoc
 
 1. Visit **Merchant sign in → Create a merchant account and store** in separate browser profiles for **Milk Shop** and **Bread Shop**. Give each the locality and address **Demo Lane**, city **Bengaluru**, PIN **560095**, and example demo coordinates **12.93, 77.62**. Sign up two separate shopper accounts.
 2. Under **Shelf Stock Manager → Manage listings → Add a listing**, create Milk (carton, ₹40, quantity 2) in Milk Shop and Bread (loaf, ₹30, quantity 1) in Bread Shop. Keep both listed.
-3. As a shopper, open **Plan a shopping list**, type `2 milk and bread` and `Demo Lane`, then click **Compare baskets**. Each single store shows a missing item and the complete split shows ₹110. Reserve the split.
+3. As a shopper, open the **Nukkad Assistant** message bubble, enter `Demo Lane` as the location and send `2 milk and bread` in chat. The comparison opens automatically. Each single store shows a missing item and the complete split shows ₹110. Reserve the split.
 4. Keep the shopper’s **My orders** open while each merchant opens **Incoming Orders**. Accept the Milk request, mark it ready, then collect it with the shopper’s six-digit code. Reject Bread or cancel it from My orders. Bread returns to available stock once. Collected Milk remains deducted.
 5. To show the last-unit race, compare `bread` as both shoppers while one loaf is available, then submit both reservations. One succeeds. The test also covers price-change rollback, retrying the same request key, and cross-store order access.
 
 #### Shopping chatbot and Buy from store
 
-Set `GEMINI_API_KEY`, `GEMINI_MODEL` (defaults to `gemini-3.1-flash-lite`), and `SARVAM_API_KEY` in the backend environment. Sign in as a shopper, open **Plan a shopping list**, enter your location or use GPS, and send a message. English mode sends the message directly to Gemini. Automatic detection and the other language modes translate the message with Sarvam AI first. Enter an ordinary shopping list when the assistant is unavailable.
+Set `GEMINI_API_KEY`, `GEMINI_MODEL` (defaults to `gemini-3.1-flash-lite`), and `SARVAM_API_KEY` in the backend environment. Sign in as a shopper, open the **Nukkad Assistant** message bubble, enter your location or use GPS, and send a message. English mode sends the message directly to Gemini. Automatic detection and the other language modes translate the message with Sarvam AI first. Use the storefront search to browse individual products when the assistant is unavailable.
 
 With Razorpay Test Mode configured, choose **Buy from [store]**, enter your phone number, and complete that store's payment for pickup. Return to the planner and choose **Check payment** before buying from the next store. **Cancel checkout** releases an unpaid hold through the existing checkout flow. **Reserve and pay at pickup** remains available as a separate option.

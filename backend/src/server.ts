@@ -139,7 +139,7 @@ app.post('/api/customer/shopping-assistant', customer, async (req, res) => {
     return res.json({ ...reply, plans });
   } catch (error) {
     return res.status(502).json({ error: error instanceof Error && !(error instanceof z.ZodError)
-      ? error.message : 'The assistant could not read that request. Try entering a shopping list directly.' });
+      ? error.message : 'The assistant could not read that request. Try rephrasing your message.' });
   }
 });
 

@@ -13,6 +13,7 @@ import { Navbar } from './Navbar';
 import { defaultSearchFilters, SearchBar } from './SearchBar';
 import { ProductCard } from './ProductCard';
 import { playPaymentAnimation } from './paymentAnimation';
+import { ShoppingPlanner } from './ShoppingPlanner';
 import { CartDrawer } from './CartDrawer';
 import { RaceBattleModal } from './RaceBattleModal';
 import { ShoppingBag, ChevronRight, Search as SearchIcon } from 'lucide-react';
@@ -251,7 +252,6 @@ export const StorefrontPage: React.FC = () => {
         {/* Clean Search & Category Filter */}
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
           <p className="text-stone-600">{location ? 'Nearest available listing shown for each product' : 'All stores · Allow location access to see the nearest listings'}</p>
-          <Link to="/plan" className="rounded-lg border border-nukkad-800 px-3 py-2 font-semibold text-nukkad-900">Plan a shopping list</Link>
         </div>
 
         <SearchBar
@@ -369,6 +369,8 @@ export const StorefrontPage: React.FC = () => {
         )}
       </div>
 
+
+      <ShoppingPlanner cartVisible={cartCount > 0} cartOpen={isCartOpen} storefrontLocation={location} />
 
       {/* Cart & Checkout Drawer */}
       <CartDrawer
