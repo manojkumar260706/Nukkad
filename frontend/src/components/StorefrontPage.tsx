@@ -370,7 +370,8 @@ export const StorefrontPage: React.FC = () => {
       </div>
 
 
-      <ShoppingPlanner cartVisible={cartCount > 0} cartOpen={isCartOpen} storefrontLocation={location} />
+      <ShoppingPlanner cartVisible={cartCount > 0} cartOpen={isCartOpen} storefrontLocation={location}
+        localities={[...new Set(stores.map(store => store.locality?.trim()).filter(Boolean))]} />
 
       {/* Cart & Checkout Drawer */}
       <CartDrawer

@@ -26,8 +26,8 @@ const basketKey = (basket: PickupBasket) => JSON.stringify([
   basket.store.id, basket.items.map(item => [item.productId, item.quantity]).sort()
 ]);
 
-export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation }: {
-  cartVisible: boolean; cartOpen: boolean; storefrontLocation?: Coordinates
+export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, localities }: {
+  cartVisible: boolean; cartOpen: boolean; storefrontLocation?: Coordinates; localities: string[]
 }) {
   const [params] = useSearchParams();
   const [open, setOpen] = useState(params.get('chat') === 'open');
@@ -105,6 +105,23 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation }: {
       if (reply.plans) setView('compare');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create a plan.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retryLocation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const typed = location.trim();
+    if (busy || !typed || !assistantItems.length) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const list = assistantItems.map(item => `${item.quantity} ${item.name}`).join(', ');
+      setPlans(await findShoppingPlans({ list, location: typed }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not compare baskets for that location.');
     } finally {
       setBusy(false);
     }
@@ -331,7 +348,25 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation }: {
     </form>}
     {error && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>}
     {notice && <p role="status" className="text-sm text-stone-700">{notice}</p>}
-    {plans && !plans.stores.length && <p className="rounded-xl border bg-white p-4 text-sm">No stores matched your location. Go back to chat and try a locality or PIN code.</p>}
+    {plans && !plans.stores.length && <form onSubmit={retryLocation} className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4">
+      <h3 className="font-semibold text-nukkad-950">No stores matched that location</h3>
+      <p className="text-sm text-stone-600">Try a locality, city or PIN to compare the same basket in another area.</p>
+      <label className="grid gap-1 text-sm font-medium">Shopping location
+        <input value={location} onChange={event => setLocation(event.target.value)} list="assistant-store-localities"
+          placeholder="Enter a locality, city or PIN" required maxLength={250}
+          className="rounded-xl border border-stone-300 px-3 py-2 text-base" />
+      </label>
+      <datalist id="assistant-store-localities">{localities.map(area => <option key={area} value={area} />)}</datalist>
+      {localities.length > 0 && <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-stone-600">Areas with stores</span>
+        {localities.slice(0, 4).map(area => <button key={area} type="button" onClick={() => setLocation(area)}
+          className="rounded-full border border-nukkad-200 px-3 py-1.5 text-nukkad-900">{area}</button>)}
+      </div>}
+      <button type="submit" disabled={busy || !location.trim()}
+        className="rounded-xl bg-nukkad-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+        {busy ? 'Comparing…' : 'Compare baskets'}
+      </button>
+    </form>}
     {plans && plans.stores.length > 0 ? <>
       {plans.unmatched.length > 0 && <p className="rounded bg-amber-50 p-3 text-sm">No nearby listing matches: {plans.unmatched.map(item => item.name).join(', ')}</p>}
       {plans.split && <section className="space-y-3">
