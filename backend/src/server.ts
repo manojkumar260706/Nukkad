@@ -308,10 +308,19 @@ app.get('/api/events/live', (req: Request, res: Response) => {
   });
 });
 
+// Global error handlers for network disconnect resilience
+process.on('uncaughtException', (err: any) => {
+  console.error('[Process] Uncaught Exception:', err?.message || err);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  console.error('[Process] Unhandled Rejection:', reason?.message || reason);
+});
+
 // Boot the server and background event workers
 async function startServer() {
   try {
-    console.log('🚀 Initializing Nukkad backend services...');
+    console.log('Initializing Nukkad backend services...');
 
     // 1. Ensure Kafka topics exist on Aiven
     await ensureKafkaTopics();
@@ -324,10 +333,10 @@ async function startServer() {
 
     app.listen(PORT, () => {
       console.log(`\n======================================================`);
-      console.log(`🛍️  NUKKAD API SERVER RUNNING ON http://localhost:${PORT}`);
-      console.log(`⚡ PostgreSQL: Connected to Aiven`);
-      console.log(`📡 Apache Kafka: Connected to Aiven`);
-      console.log(`🔍 OpenSearch: Connected to Aiven`);
+      console.log(`NUKKAD API SERVER RUNNING ON http://localhost:${PORT}`);
+      console.log(`PostgreSQL: Connected to Aiven`);
+      console.log(`Apache Kafka: Connected to Aiven`);
+      console.log(`OpenSearch: Connected to Aiven`);
       console.log(`======================================================\n`);
     });
   } catch (err: any) {

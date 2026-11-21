@@ -3,7 +3,7 @@ import { osClient } from './client';
 import { INDEX_NAME, setupOpenSearchIndex } from './indexManager';
 
 export async function syncDatabaseToOpenSearch(recreateIndex = true) {
-  console.log('🔄 Syncing PostgreSQL products & inventory to OpenSearch...');
+  console.log('Syncing PostgreSQL products & inventory to OpenSearch...');
 
   try {
     await setupOpenSearchIndex(recreateIndex);
@@ -35,7 +35,7 @@ export async function syncDatabaseToOpenSearch(recreateIndex = true) {
     `);
 
     if (rows.length === 0) {
-      console.log('⚠️ No products found to index.');
+      console.log('No products found to index.');
       return;
     }
 
@@ -75,12 +75,12 @@ export async function syncDatabaseToOpenSearch(recreateIndex = true) {
     });
 
     if (bulkResponse.body.errors) {
-      console.error('❌ OpenSearch bulk indexing encountered errors');
+      console.error('OpenSearch bulk indexing encountered errors');
     } else {
-      console.log(`✅ Successfully indexed ${rows.length} store product documents into OpenSearch!`);
+      console.log(`Successfully indexed ${rows.length} store product documents into OpenSearch.`);
     }
   } catch (err: any) {
-    console.error('❌ Sync to OpenSearch failed:', err.message);
+    console.error('Sync to OpenSearch failed:', err.message);
     throw err;
   }
 }
@@ -99,7 +99,7 @@ export async function updateStockInOpenSearch(storeId: string, productId: string
         }
       }
     });
-    console.log(`📡 OpenSearch doc ${docId} updated: stock -> ${newStock}`);
+    console.log(`OpenSearch doc ${docId} updated: stock -> ${newStock}`);
   } catch (err: any) {
     console.error(`Failed to update OpenSearch doc for ${storeId}_${productId}:`, err.message);
   }

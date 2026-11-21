@@ -23,6 +23,10 @@ export const kafka = new Kafka({
     password: process.env.KAFKA_PASSWORD || ''
   },
   connectionTimeout: 10000,
+  retry: {
+    initialRetryTime: 300,
+    retries: 8
+  },
   logLevel: logLevel.ERROR
 });
 
@@ -52,13 +56,15 @@ export async function ensureKafkaTopics() {
     if (topicsToCreate.length > 0) {
       console.log('Creating Kafka topics on Aiven:', topicsToCreate.map(t => t.topic));
       await admin.createTopics({ topics: topicsToCreate });
-      console.log('✅ Kafka topics created successfully!');
+      console.log('Kafka topics created successfully.');
     } else {
-      console.log('✅ Kafka topics already exist on Aiven.');
+      console.log('Kafka topics already exist on Aiven.');
     }
   } catch (err: any) {
-    console.error('⚠️ Could not verify/create Kafka topics:', err.message);
+    console.error('Notice: Could not verify/create Kafka topics:', err.message);
   } finally {
-    await admin.disconnect();
+    try {
+      await admin.disconnect();
+    } catch {}
   }
 }

@@ -12,8 +12,15 @@ export async function startKafkaConsumers() {
   });
 
   try {
+    consumer.on(consumer.events.CRASH, (event) => {
+      console.error('[Kafka Consumer] Consumer crashed:', event.payload.error?.message || event.payload.error);
+    });
+    consumer.on(consumer.events.DISCONNECT, () => {
+      console.warn('[Kafka Consumer] Consumer disconnected from broker.');
+    });
+
     await consumer.connect();
-    console.log('✅ Kafka Consumer connected to Aiven Kafka.');
+    console.log('Kafka Consumer connected to Aiven Kafka.');
 
     await consumer.subscribe({ topic: TOPICS.ORDERS, fromBeginning: false });
     await consumer.subscribe({ topic: TOPICS.INVENTORY, fromBeginning: false });
@@ -109,6 +116,6 @@ export async function startKafkaConsumers() {
       }
     });
   } catch (err: any) {
-    console.error('❌ Failed to start Kafka consumer:', err.message);
+    console.error('Failed to start Kafka consumer:', err.message);
   }
 }

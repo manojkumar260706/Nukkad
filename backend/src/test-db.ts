@@ -24,13 +24,13 @@ async function testConnection() {
   console.log('Connecting to Aiven PostgreSQL...');
   try {
     const res = await pool.query('SELECT current_database(), current_user, version();');
-    console.log('✅ Aiven PostgreSQL Connected Successfully!');
+    console.log('Aiven PostgreSQL Connected Successfully.');
     console.log('Database:', res.rows[0].current_database);
     console.log('User:', res.rows[0].current_user);
     console.log('Version:', res.rows[0].version.split(' ')[0], res.rows[0].version.split(' ')[1]);
     await pool.end();
   } catch (err: any) {
-    console.error('❌ PostgreSQL Connection Error:', err.message);
+    console.error('PostgreSQL Connection Error:', err.message);
     process.exit(1);
   }
 }

@@ -9,7 +9,7 @@ export async function getKafkaProducer(): Promise<Producer> {
       allowAutoTopicCreation: true
     });
     await producer.connect();
-    console.log('✅ Kafka Producer connected.');
+    console.log('Kafka Producer connected.');
   }
   return producer;
 }

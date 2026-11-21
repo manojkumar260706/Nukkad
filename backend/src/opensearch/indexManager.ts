@@ -3,7 +3,7 @@ import { osClient } from './client';
 export const INDEX_NAME = process.env.OPENSEARCH_INDEX || 'nukkad_products';
 
 export async function setupOpenSearchIndex(recreate = false) {
-  console.log(`🔍 Checking OpenSearch index '${INDEX_NAME}'...`);
+  console.log(`Checking OpenSearch index '${INDEX_NAME}'...`);
 
   try {
     const exists = await osClient.indices.exists({ index: INDEX_NAME });
@@ -12,7 +12,7 @@ export async function setupOpenSearchIndex(recreate = false) {
       console.log(`Deleting existing index '${INDEX_NAME}'...`);
       await osClient.indices.delete({ index: INDEX_NAME });
     } else if (exists.body) {
-      console.log(`✅ Index '${INDEX_NAME}' already exists.`);
+      console.log(`Index '${INDEX_NAME}' already exists.`);
       return;
     }
 
@@ -90,9 +90,9 @@ export async function setupOpenSearchIndex(recreate = false) {
       }
     });
 
-    console.log(`✅ OpenSearch index '${INDEX_NAME}' created with synonym analyzers!`);
+    console.log(`OpenSearch index '${INDEX_NAME}' created with synonym analyzers.`);
   } catch (err: any) {
-    console.error('❌ OpenSearch index creation failed:', err.message);
+    console.error('OpenSearch index creation failed:', err.message);
     if (err.body) {
       console.error('Details:', JSON.stringify(err.body));
     }

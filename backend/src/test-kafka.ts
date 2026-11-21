@@ -34,7 +34,7 @@ async function testKafka() {
       const admin = kafka.admin();
       await admin.connect();
       const topics = await admin.listTopics();
-      console.log(`✅ Aiven Kafka Connected Successfully using ${mechanism}!`);
+      console.log(`Aiven Kafka Connected Successfully using ${mechanism}.`);
       console.log('Existing Topics:', topics);
       await admin.disconnect();
       return;
@@ -56,7 +56,7 @@ async function testKafka() {
     const admin = kafka.admin();
     await admin.connect();
     const topics = await admin.listTopics();
-    console.log('✅ Aiven Kafka Connected Successfully via SSL!');
+    console.log('Aiven Kafka Connected Successfully via SSL.');
     console.log('Existing Topics:', topics);
     await admin.disconnect();
   } catch (err: any) {

@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { pool } from '../config/db';
 
 export async function seed() {
-  console.log('🌱 Seeding Nukkad database with stores, products, inventory & auth accounts...');
+  console.log('Seeding Nukkad database with stores, products, inventory & auth accounts...');
   const client = await pool.connect();
 
   try {
@@ -442,10 +442,10 @@ export async function seed() {
     }
 
     await client.query('COMMIT');
-    console.log('✅ Database seeded with stores, auth accounts, products & inventory!');
+    console.log('Database seeded with stores, auth accounts, products & inventory.');
   } catch (err: any) {
     await client.query('ROLLBACK');
-    console.error('❌ Seeding failed:', err.message);
+    console.error('Seeding failed:', err.message);
     throw err;
   } finally {
     client.release();

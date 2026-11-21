@@ -281,7 +281,7 @@ export const StorefrontPage: React.FC = () => {
               to="/store/login"
               className="text-stone-600 hover:text-stone-900 font-medium hover:underline text-[11px]"
             >
-              🏪 Merchant / Storekeeper Portal
+              Merchant / Storekeeper Portal
             </Link>
           </div>
         </div>

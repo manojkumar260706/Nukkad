@@ -58,7 +58,7 @@ export async function processOutboxBatch() {
         await client.query('ROLLBACK');
       } catch (rbErr) {}
     }
-    console.error('⚠️ [Outbox Relay] Notice:', err.message);
+    console.error('[Outbox Relay] Notice:', err.message);
   } finally {
     if (client) {
       try {
@@ -71,7 +71,7 @@ export async function processOutboxBatch() {
 
 export function startOutboxRelay(intervalMs = 1500) {
   if (relayTimer) clearInterval(relayTimer);
-  console.log(`🚀 Starting Transactional Outbox Relay (polling every ${intervalMs}ms)...`);
+  console.log(`Starting Transactional Outbox Relay (polling every ${intervalMs}ms)...`);
   relayTimer = setInterval(processOutboxBatch, intervalMs);
 }
 
