@@ -2,9 +2,9 @@
 
 **A neighborhood storefront with live inventory, multilingual basket planning, and store-level order fulfilment.**
 
-[Browse Nukkad](https://nukkadshop.vercel.app/) · [Backend health](https://nukkad-backend-qeof.onrender.com/api/health)
+[Browse Nukkad](https://nukkadshop.vercel.app/)
 
-![Illustration of a neighborhood grocery shop with produce at the entrance](frontend/public/nukkad-shopfront.jpg)
+![Nukkad landing page with shopper and shopkeeper sign-in and a neighborhood shopfront](docs/landing-page.png)
 
 Nukkad brings the physical shelf and the online shop together. A merchant can record an in-store sale while a shopper is checking out, and both operations use the same inventory record. Shoppers can also describe an entire shopping list in chat, see how much nearby shops can fulfil, and choose between a single shop and a split pickup.
 
@@ -132,7 +132,7 @@ Open the URL printed by Vite, usually `http://localhost:3000`. The development f
 | Service | Configuration |
 | --- | --- |
 | **Vercel** | [Live storefront](https://nukkadshop.vercel.app/). The current deployment was uploaded as a built `dist` bundle. To update it, build with `VITE_API_BASE_URL` set to the HTTPS API and upload the new bundle with the SPA rewrite from [frontend/vercel.json](frontend/vercel.json). For a Git-connected deployment, set the root directory to `frontend`, build command to `npm run build`, and output directory to `dist`. |
-| **Render** | [Live API health](https://nukkad-backend-qeof.onrender.com/api/health). The current service tracks `updates`. Use root directory `backend`, build command `npm ci --include=dev && npm run build`, and start command `npm start`. Configure database, payment and assistant secrets in Render’s backend environment. |
+| **Render** | The current service tracks `updates`. Use root directory `backend`, build command `npm ci --include=dev && npm run build`, and start command `npm start`. Configure database, payment and assistant secrets in Render’s backend environment. |
 | **Aiven** | Hosts PostgreSQL, Kafka and OpenSearch. Keep credentials and certificates in the backend environment. |
 
 Leave demo-account flags off on public deployments. Keep Gemini, Sarvam, Razorpay and database secrets on the server. Vercel only needs the public API base URL.
