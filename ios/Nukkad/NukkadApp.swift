@@ -4,48 +4,28 @@ import UIKit
 
 @main
 struct NukkadApp: App {
-    private var storefrontURL: URL? {
-        guard let setting = Bundle.main.object(forInfoDictionaryKey: "StorefrontURL") as? String,
-              let url = URL(string: setting),
-              url.scheme == "https", url.host != "your-nukkad.vercel.app", url.host != nil else {
-            return nil
-        }
-        return url
-    }
-
     var body: some Scene {
-        WindowGroup {
-            if let storefrontURL {
-                StorefrontView(url: storefrontURL)
-            } else {
-                VStack(spacing: 12) {
-                    Text("Nukkad").font(.largeTitle.bold())
-                    Text("Set StorefrontURL in the Nukkad target’s Info settings to your deployed HTTPS website.")
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-            }
-        }
+        WindowGroup { StorefrontView() }
     }
 }
 
 struct StorefrontView: UIViewControllerRepresentable {
-    let url: URL
-
     func makeUIViewController(context: Context) -> StorefrontController {
-        StorefrontController(url: url)
+        StorefrontController()
     }
 
     func updateUIViewController(_ controller: StorefrontController, context: Context) {}
 }
 
 final class StorefrontController: UIViewController, WKUIDelegate, WKNavigationDelegate {
-    private let url: URL
-    private let storefront = WKWebView()
+    private let url = URL(string: "nukkad://storefront/index.html")!
+    private let storefront: WKWebView
     private var paymentWindow: UIViewController?
 
-    init(url: URL) {
-        self.url = url
+    init() {
+        let configuration = WKWebViewConfiguration()
+        configuration.setURLSchemeHandler(BundledStorefront(), forURLScheme: "nukkad")
+        storefront = WKWebView(frame: .zero, configuration: configuration)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -139,5 +119,37 @@ final class StorefrontController: UIViewController, WKUIDelegate, WKNavigationDe
             self.storefront.load(URLRequest(url: self.url))
         })
         present(alert, animated: true)
+    }
+}
+
+
+private final class BundledStorefront: NSObject, WKURLSchemeHandler {
+    private let root = Bundle.main.resourceURL?.appendingPathComponent("Web", isDirectory: true)
+
+    func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+        guard let requested = task.request.url, requested.host == "storefront", let root else {
+            task.didFailWithError(URLError(.fileDoesNotExist))
+            return
+        }
+        let resolvedRoot = root.resolvingSymlinksInPath()
+        let path = requested.path == "/" ? "index.html" : String(requested.path.dropFirst())
+        let file = resolvedRoot.appendingPathComponent(path).standardizedFileURL.resolvingSymlinksInPath()
+        guard file.path.hasPrefix(resolvedRoot.path + "/"), let data = try? Data(contentsOf: file) else {
+            task.didFailWithError(URLError(.fileDoesNotExist))
+            return
+        }
+
+        let mimeTypes = [
+            "html": "text/html", "js": "application/javascript", "css": "text/css",
+            "png": "image/png", "webmanifest": "application/manifest+json", "svg": "image/svg+xml"
+        ]
+        task.didReceive(URLResponse(url: requested, mimeType: mimeTypes[file.pathExtension],
+                                    expectedContentLength: data.count, textEncodingName: nil))
+        task.didReceive(data)
+        task.didFinish()
+    }
+
+    func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {
+        // Bundled reads are synchronous, so no pending work needs cancellation.
     }
 }

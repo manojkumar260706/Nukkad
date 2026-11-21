@@ -32,3 +32,12 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Keep iOS from zooming the page when a small form field receives focus. */
+@media (max-width: 640px), (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: max(16px, 1rem);
+  }
+}

@@ -163,15 +163,15 @@ Storefront search accepts phrases such as `earphones under 2k` and `rice at most
 
 Deploy the Vite frontend on Vercel using the `frontend` directory. Deploy the long-running backend separately and set `VITE_API_BASE_URL` in Vercel to its HTTPS origin. Configure the backend with the same Aiven services used by the merchant dashboard and Razorpay Test Mode keys. Keep the seeded-demo account flags off on a public deployment. Use individual accounts and a private demo store or database.
 
-1. Build and run the Xcode app on your phone with the same deployed storefront URL. See the iPhone app setup below.
+1. Build and run the Xcode app on your phone with the same backend URL. See the iPhone app setup below.
 2. On a second laptop, sign in to the same deployed site as another shopper. Add the same test product to both carts.
 3. On the merchant laptop, select the same store, set the available stock of that product to 1, and open **Database changes**. Use a product with no outstanding holds.
 4. Both shoppers tap **Continue to payment**. The backend locks the same inventory row. The winner receives a Razorpay link and the other shopper sees **Out of stock**. Complete the winning test payment. The merchant feed shows **Available stock 1 → 0** and then **Payment status → Paid**.
 
 ### iPhone app setup
 
-1. Open `ios/Nukkad.xcodeproj` in Xcode.
-2. In `ios/Nukkad/Info.plist`, set `StorefrontURL` to the HTTPS URL of your deployed Nukkad website.
-3. In **Signing & Capabilities**, select your Apple development team. If the bundle identifier is taken, set a unique one. Select your iPhone as the run destination and press **Run**.
+1. From the repository root, run `npm ci --prefix frontend`, then `sh ios/build-storefront.sh`.
+2. Open `ios/Nukkad.xcodeproj` in Xcode.
+3. In **Signing & Capabilities**, select your Apple development team. Select your iPhone as the run destination and press **Run**.
 
-The iPhone app uses WKWebView to share the deployed storefront and backend with the browser version. Razorpay checkout opens inside the app, and **Done** returns to the storefront. The rolling-bag animation runs before the storefront is shown on a fresh page load in either client. It respects reduced motion.
+The script bundles the storefront in the app and points it at the live Render API. To use a different backend, run `NUKKAD_API_URL=https://your-api.example.com sh ios/build-storefront.sh`. Vercel is optional. Rebuild the bundle and reinstall the app after frontend changes. The app still needs internet access for the API and Razorpay.
