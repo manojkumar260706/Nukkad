@@ -42,6 +42,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
   const expanded = open && !cartOpen;
   const [plans, setPlans] = useState<Awaited<ReturnType<typeof findShoppingPlans>>>();
   const [notice, setNotice] = useState('');
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const { customer } = useAuth();
@@ -91,7 +92,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
     if (busy || speech.listening || !message.trim()) return;
     setError('');
     if (!gps && !location.trim()) {
-      setError('Enter your location below or use GPS before asking for a plan.');
+      setError('Enter a locality, city or PIN above, or tap Use GPS.');
       return;
     }
     setBusy(true);
@@ -177,18 +178,31 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
     }
   }
 
-  function locate() {
-
+  async function locate() {
+    if (locating) return;
+    setLocating(true);
+    setError('');
     setNotice('Getting your location…');
-    if (!navigator.geolocation) {
-      setNotice('GPS is unavailable. Enter a locality, address or PIN.');
-      return;
+    try {
+      const native = (window as Window & {
+        webkit?: { messageHandlers?: { nukkadLocation?: { postMessage: (value: object) => Promise<Coordinates> } } };
+      }).webkit?.messageHandlers?.nukkadLocation;
+      const position = window.location.protocol === 'nukkad:' && native
+        ? await native.postMessage({})
+        : await new Promise<Coordinates>((resolve, reject) => {
+          if (!navigator.geolocation) return reject(new Error('GPS unavailable'));
+          navigator.geolocation.getCurrentPosition(({ coords }) => {
+            resolve({ latitude: coords.latitude, longitude: coords.longitude });
+          }, reject, { timeout: 8000, maximumAge: 60000 });
+        });
+      setDeviceLocation(position);
+      setLocation(current => current === location ? '' : current);
+      setNotice('GPS ready. You can now send your message.');
+    } catch {
+      setNotice('GPS couldn’t get your location. Enter a locality, city or PIN above.');
+    } finally {
+      setLocating(false);
     }
-    navigator.geolocation.getCurrentPosition(({ coords }) => {
-      setLocation('');
-      setDeviceLocation({ latitude: coords.latitude, longitude: coords.longitude });
-      setNotice('Using your current location.');
-    }, () => setNotice('GPS is unavailable. Enter a locality, address or PIN.'), { timeout: 8000 });
   }
 
   async function reserve(plan: ShoppingPlan) {
@@ -293,7 +307,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
           <input aria-label="Shopping location" value={location} onChange={event => setLocation(event.target.value)}
             placeholder={gps ? 'Current location' : 'Locality, city or PIN'}
             className="min-w-0 flex-1 bg-transparent py-2 text-sm text-stone-800 placeholder:text-stone-500 focus-visible:outline-nukkad-600" />
-          <button type="button" onClick={locate} className="shrink-0 rounded-lg bg-nukkad-50 px-2.5 py-2 text-xs font-semibold text-nukkad-900">Use GPS</button>
+          <button type="button" onClick={locate} disabled={locating} className="shrink-0 rounded-lg bg-nukkad-50 px-2.5 py-2 text-xs font-semibold text-nukkad-900 disabled:opacity-50">{locating ? 'Locating…' : 'Use GPS'}</button>
         </div>
         <div ref={transcript} role="log" aria-label="Conversation" className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
           <p className="mr-7 w-fit rounded-2xl rounded-tl-sm border border-stone-200 bg-white px-4 py-3 text-sm leading-relaxed text-stone-800">

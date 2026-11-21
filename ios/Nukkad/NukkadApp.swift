@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import UIKit
+import CoreLocation
 
 @main
 struct NukkadApp: App {
@@ -21,8 +22,83 @@ struct StorefrontView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: StorefrontController, context: Context) {}
 }
 
+private final class StorefrontLocationBridge: NSObject, WKScriptMessageHandlerWithReply, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    private var reply: ((Any?, String?) -> Void)?
+    private var requestID = UUID()
+    private var locating = false
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage,
+                               replyHandler: @escaping (Any?, String?) -> Void) {
+        guard message.frameInfo.isMainFrame,
+              message.frameInfo.request.url?.scheme == "nukkad",
+              message.frameInfo.request.url?.host == "storefront" else {
+            replyHandler(nil, "Location is only available to the Nukkad storefront.")
+            return
+        }
+        guard reply == nil else {
+            replyHandler(nil, "A location request is already running.")
+            return
+        }
+        reply = replyHandler
+        requestID = UUID()
+        let currentRequest = requestID
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self, self.requestID == currentRequest, self.reply != nil else { return }
+            self.complete(error: "GPS timed out.")
+        }
+        requestLocation()
+    }
+
+    private func requestLocation() {
+        guard reply != nil, !locating else { return }
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .authorizedAlways, .authorizedWhenInUse:
+            locating = true
+            manager.startUpdatingLocation()
+        default:
+            complete(error: "Location access is unavailable.")
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted {
+            complete(error: "Location access is unavailable.")
+        } else if manager.authorizationStatus != .notDetermined {
+            requestLocation()
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last, location.horizontalAccuracy >= 0,
+              abs(location.timestamp.timeIntervalSinceNow) < 60 else { return }
+        complete(["latitude": location.coordinate.latitude, "longitude": location.coordinate.longitude])
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if (error as? CLError)?.code != .locationUnknown { complete(error: "GPS could not determine your location.") }
+    }
+
+    private func complete(_ value: Any? = nil, error: String? = nil) {
+        guard let callback = reply else { return }
+        reply = nil
+        locating = false
+        manager.stopUpdatingLocation()
+        callback(value, error)
+    }
+}
+
 final class StorefrontController: UIViewController, WKUIDelegate, WKNavigationDelegate {
     private let url = URL(string: "nukkad://storefront/index.html")!
+    private let locationBridge = StorefrontLocationBridge()
     private let storefront: WKWebView
     private var storefrontThemeObservation: NSKeyValueObservation?
     private var paymentWindow: UIViewController?
@@ -31,6 +107,7 @@ final class StorefrontController: UIViewController, WKUIDelegate, WKNavigationDe
         let configuration = WKWebViewConfiguration()
         configuration.setURLSchemeHandler(BundledStorefront(), forURLScheme: "nukkad")
         storefront = WKWebView(frame: .zero, configuration: configuration)
+        configuration.userContentController.addScriptMessageHandler(locationBridge, contentWorld: .page, name: "nukkadLocation")
         super.init(nibName: nil, bundle: nil)
     }
 
