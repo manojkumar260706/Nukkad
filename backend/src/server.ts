@@ -9,6 +9,7 @@ import { pool } from './config/db';
 import { ensureKafkaTopics } from './kafka/client';
 import { startKafkaConsumers } from './kafka/consumers';
 import { startOutboxRelay } from './kafka/outboxRelay';
+import { parsePriceQuery } from './opensearch/searchQuery';
 import { searchProducts } from './opensearch/searchService';
 import { createOrderAtomic, restockProduct, setProductStock, simulateRaceCondition } from './services/orderService';
 import { registerUser, loginUser, verifyAuthToken } from './services/authService';
@@ -20,6 +21,11 @@ import { migrate } from './db/migrate';
 import { runCheckoutDemo, isDemoScenario } from './services/checkoutDemo';
 import { parseCheckoutInput } from './services/checkoutInput';
 import { listCustomerOrders, reconcileCheckout, reconcilePendingCheckouts, startCheckout, updateFulfillment } from './services/checkoutService';
+
+import { reservationInput, reservePickup, updatePickupOrder } from './services/pickupService';
+import { nearbyStores, planShoppingList } from './services/shoppingPlanner';
+import { getStoreCatalog, listingInput, saveListing } from './services/listingService';
+import { listenForDatabaseChanges } from './events/databaseChanges';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -63,24 +69,103 @@ app.get('/api/health', async (_req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     services: {
       postgresql: { status: pgStatus, error: pgError, provider: 'Aiven' },
-      kafka: { status: 'healthy', provider: 'Aiven' },
-      opensearch: { status: 'healthy', provider: 'Aiven' }
+      kafka: { status: process.env.KAFKA_ENABLED === 'false' ? 'disabled' : 'configured', provider: 'Aiven' },
+      opensearch: { status: process.env.OPENSEARCH_ENABLED === 'false' ? 'disabled' : 'configured', provider: 'Aiven' }
     }
   });
 });
 
-// Auth Routes
-app.post('/api/auth/register', async (req: Request, res: Response) => {
+const accountInput = z.object({
+  name: z.string().trim().min(1).max(100),
+  email: z.string().trim().email().max(100),
+  password: z.string().min(6).refine(value => Buffer.byteLength(value, 'utf8') <= 72, 'Password is too long.'),
+  phone: z.string().trim().max(20).optional()
+});
+const coordinates = z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) });
+const storeInput = z.object({
+  name: z.string().trim().min(1).max(100), city: z.string().trim().min(1).max(50),
+  locality: z.string().trim().min(1).max(100), address: z.string().trim().min(1).max(250),
+  pin: z.string().regex(/^[1-9]\d{5}$/), location: coordinates.optional()
+});
+
+app.post('/api/auth/register', async (req, res) => {
   try {
-    const { name, email, password, role, phone } = req.body;
-    if (role && role !== 'customer') return res.status(403).json({ error: 'Merchant accounts are provisioned by the store administrator.' });
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email, and password are required.' });
-    }
-    const result = await registerUser({ name, email, password, phone });
-    res.status(201).json(result);
+    res.status(201).json(await registerUser(accountInput.parse(req.body)));
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: err instanceof z.ZodError ? 'Enter a valid name, email and password of at least six characters.' : err.message });
+  }
+});
+
+app.post('/api/auth/merchant/register', async (req, res) => {
+  try {
+    const input = accountInput.extend({ store: storeInput }).parse(req.body);
+    const { location, ...store } = input.store;
+    res.status(201).json(await registerUser({ ...input, role: 'shopkeeper', store: { ...store, ...location } }));
+  } catch (err: any) {
+    res.status(400).json({ error: err instanceof z.ZodError ? 'Check your account and store details, including the six-digit PIN.' : err.message });
+  }
+});
+
+const discoveryInput = z.object({ location: z.string().trim().max(250).default(''), gps: coordinates.optional() });
+app.post('/api/stores/nearby', async (req, res) => {
+  try {
+    const { location, gps } = discoveryInput.parse(req.body);
+    res.json(await nearbyStores(location, gps));
+  } catch {
+    res.status(400).json({ error: 'Could not find nearby stores. Check the location and try again.' });
+  }
+});
+
+app.post('/api/shopping-plan', async (req, res) => {
+  try {
+    const { list, location, gps } = discoveryInput.extend({ list: z.string().trim().min(1).max(1500) }).parse(req.body);
+    res.json(await planShoppingList(list, location, gps));
+  } catch (error: any) {
+    res.status(400).json({ error: error instanceof z.ZodError ? 'Enter a shopping list and a valid location.' : error.message });
+  }
+});
+
+app.post('/api/customer/pickup-reservations', customer, async (req, res) => {
+  const input = reservationInput.safeParse(req.body);
+  if (!input.success) return res.status(400).json({ error: 'Invalid pickup basket or request key.' });
+  try {
+    res.status(201).json({ orders: await reservePickup(res.locals.user, input.data) });
+  } catch (error: any) {
+    res.status(409).json({ error: error.message });
+  }
+});
+
+app.post('/api/customer/orders/:id/cancel-pickup', customer, async (req, res) => {
+  try {
+    await updatePickupOrder(req.params.id, res.locals.user, 'cancelled');
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(409).json({ error: error.message });
+  }
+});
+
+app.get('/api/inventory/catalog', merchant, async (_req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT id,name,unit,price::float8 FROM products ORDER BY name,id');
+    res.json(rows);
+  } catch {
+    res.status(500).json({ error: 'Could not load the catalog.' });
+  }
+});
+
+app.post('/api/inventory/listings', merchant, async (req, res) => {
+  try {
+    res.status(201).json(await saveListing(res.locals.user.storeId, listingInput.parse(req.body)));
+  } catch (error: any) {
+    res.status(400).json({ error: error instanceof z.ZodError ? 'Check the product name, unit, price and stock.' : error.message });
+  }
+});
+
+app.put('/api/inventory/listings/:id', merchant, async (req, res) => {
+  try {
+    res.json(await saveListing(res.locals.user.storeId, listingInput.parse(req.body), req.params.id));
+  } catch (error: any) {
+    res.status(400).json({ error: error instanceof z.ZodError ? 'Check the product name, unit, price and stock.' : error.message });
   }
 });
 
@@ -152,9 +237,32 @@ app.get('/api/products/search', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Enter valid search text and non-negative prices.' });
     }
 
+    if (typeof storeId === 'string') {
+      const pagination = z.object({
+        page: z.coerce.number().int().min(1).max(10000).default(1),
+        limit: z.coerce.number().int().min(1).max(100).default(24)
+      }).safeParse({ page, limit });
+      if (!pagination.success) return res.status(400).json({ error: 'Invalid result page.' });
+      const filter = {
+        ...filters.data, ...pagination.data, category: typeof category === 'string' ? category : undefined,
+        inStockOnly: inStockOnly === 'true', sort: typeof sort === 'string' ? sort : undefined
+      };
+      const rawQuery = typeof q === 'string' ? q : '';
+      const exact = await getStoreCatalog(storeId, rawQuery, filter);
+      const text = parsePriceQuery(rawQuery).text;
+      if (exact.hits.length || !text || process.env.OPENSEARCH_ENABLED === 'false') return res.json(exact);
+      try {
+        const fuzzy = await searchProducts({ storeId, query: text, limit: 100 });
+        return res.json(await getStoreCatalog(storeId, rawQuery, {
+          ...filter, matchedProductIds: fuzzy.hits.map(hit => hit.product_id)
+        }));
+      } catch {
+        return res.json(exact);
+      }
+    }
+
     const result = await searchProducts({
       query: q as string,
-      storeId: storeId as string,
       city: city as string,
       categoryId: category as string,
       ...filters.data,
@@ -251,7 +359,15 @@ app.put('/api/orders/:id/status', merchant, async (req: Request, res: Response) 
     if (!status) {
       return res.status(400).json({ error: 'status is required.' });
     }
-    await updateFulfillment(req.params.id, res.locals.user.storeId, status, req.body.pickupCode);
+    const { rows: [order] } = await pool.query(
+      'SELECT payment_status FROM orders WHERE id=$1 AND store_id=$2', [req.params.id, res.locals.user.storeId]
+    );
+    if (!order) return res.status(404).json({ error: 'Order not found.' });
+    if (order.payment_status === 'pay_at_pickup') {
+      await updatePickupOrder(req.params.id, res.locals.user, status, req.body.pickupCode);
+    } else {
+      await updateFulfillment(req.params.id, res.locals.user.storeId, status, req.body.pickupCode);
+    }
     res.json({ success: true });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -263,7 +379,10 @@ app.get('/api/orders', merchant, async (_req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT id, order_number, customer_name, customer_phone, delivery_type, delivery_address,
-        total_amount, status, payment_status, created_at
+        total_amount, status, payment_status, created_at,
+        (SELECT jsonb_agg(jsonb_build_object('name', COALESCE(oi.product_name,p.name),
+          'unit', COALESCE(oi.product_unit,p.unit), 'quantity',oi.quantity) ORDER BY oi.id)
+          FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=orders.id) AS items
       FROM orders WHERE store_id = $1 ORDER BY created_at DESC LIMIT 30
     `, [res.locals.user.storeId]);
     res.json(rows);
@@ -315,9 +434,9 @@ app.get('/api/dashboard/stats', merchant, async (_req: Request, res: Response) =
     const invRes = await pool.query(`
       SELECT 
         p.id AS product_id,
-        p.name AS product_name,
-        p.unit,
-        p.price,
+        COALESCE(si.listing_name,p.name) AS product_name,
+        COALESCE(si.listing_unit,p.unit) AS unit,
+        COALESCE(si.listing_price,p.price)::float8 AS price, si.listed,
         si.stock,
         si.low_stock_threshold,
         (si.stock <= si.low_stock_threshold) AS is_low_stock
@@ -327,6 +446,7 @@ app.get('/api/dashboard/stats', merchant, async (_req: Request, res: Response) =
       ORDER BY si.stock ASC;
     `, [storeId]);
 
+    const { rows: [store] } = await pool.query('SELECT name FROM stores WHERE id=$1', [storeId]);
     const lowStockCount = invRes.rows.filter(r => r.is_low_stock).length;
 
     // Recent orders
@@ -340,6 +460,7 @@ app.get('/api/dashboard/stats', merchant, async (_req: Request, res: Response) =
 
     res.json({
       storeId,
+      storeName: store?.name,
       ordersToday: parseInt(ordersRes.rows[0].count, 10),
       lowStockCount,
       searchIndexStatus: 'In sync',
@@ -373,7 +494,7 @@ app.get('/api/events/live', (req: Request, res: Response) => {
   const clientId = randomUUID();
   sseManager.addClient(clientId, res);
 
-  req.on('close', () => {
+  res.on('close', () => {
     sseManager.removeClient(clientId);
   });
 });
@@ -407,20 +528,17 @@ async function startServer() {
     }, 15_000);
 
     // 1. Ensure Kafka topics exist on Aiven
-    await ensureKafkaTopics();
-
-    // 2. Start Kafka Consumer group
-    await startKafkaConsumers();
-
-    // 3. Start Transactional Outbox Relay
-    startOutboxRelay(1500);
+    if (process.env.KAFKA_ENABLED !== 'false') {
+      await ensureKafkaTopics();
+      await startKafkaConsumers();
+      startOutboxRelay(1500);
+    }
+    await listenForDatabaseChanges();
 
     app.listen(PORT, () => {
       console.log(`\n======================================================`);
       console.log(`NUKKAD API SERVER RUNNING ON http://localhost:${PORT}`);
-      console.log(`PostgreSQL: Connected to Aiven`);
-      console.log(`Apache Kafka: Connected to Aiven`);
-      console.log(`OpenSearch: Connected to Aiven`);
+      console.log('PostgreSQL migration complete.');
       console.log(`======================================================\n`);
     });
   } catch (err: any) {

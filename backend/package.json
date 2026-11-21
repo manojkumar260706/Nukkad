@@ -7,7 +7,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed": "ts-node-dev src/db/seed.ts"
+    "seed": "ts-node-dev src/db/seed.ts",
+    "test": "npm run build && node --test test/*.cjs"
   },
   "dependencies": {
     "@opensearch-project/opensearch": "^3.1.0",

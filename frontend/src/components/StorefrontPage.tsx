@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Category, Product, CartItem, Store } from '../types';
 import {
   fetchCategories,
@@ -35,7 +35,9 @@ export const StorefrontPage: React.FC = () => {
   const [isRaceModalOpen, setIsRaceModalOpen] = useState<boolean>(false);
 
   // Default store for shopper is Koramangala
-  const defaultStoreId = 'store-koramangala';
+  const [params] = useSearchParams();
+  const defaultStoreId = params.get('store') || 'store-koramangala';
+  useEffect(() => { setCart([]); }, [defaultStoreId]);
 
   const [store, setStore] = useState<Store>();
   useEffect(() => {
@@ -75,7 +77,7 @@ export const StorefrontPage: React.FC = () => {
     } finally {
       if (request === searchRequest.current) setIsSearching(false);
     }
-  }, [searchQuery, selectedCategory, filters]);
+  }, [searchQuery, selectedCategory, filters, defaultStoreId]);
 
   useEffect(() => {
     searchRequest.current++;
@@ -92,7 +94,7 @@ export const StorefrontPage: React.FC = () => {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'inventory.changed' || (data.type === 'order.placed' || data.type === 'order.held') || data.type === 'search.synced') {
+        if (data.type === 'database.changed' || data.type === 'inventory.changed' || (data.type === 'order.placed' || data.type === 'order.held') || data.type === 'search.synced') {
           executeSearch();
         }
       } catch (err) {
@@ -201,6 +203,7 @@ export const StorefrontPage: React.FC = () => {
       <div>
         {/* Clean Shopper Navbar */}
         <Navbar
+          location={store ? `${store.locality}, ${store.city}` : undefined}
           cartCount={cartCount}
           cartTotal={cartTotal}
           onOpenCart={() => setIsCartOpen(true)}
@@ -208,6 +211,11 @@ export const StorefrontPage: React.FC = () => {
         />
 
         {/* Clean Search & Category Filter */}
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+          {store?.name && <p className="font-semibold">{store.name}</p>}
+          <Link to="/plan" className="rounded-lg border border-nukkad-800 px-3 py-2 font-semibold text-nukkad-900">Plan a shopping list</Link>
+        </div>
+
         <SearchBar
           filters={filters}
           setFilters={setFilters}
@@ -319,6 +327,7 @@ export const StorefrontPage: React.FC = () => {
         customerPhone={customer?.phone || ''}
         signedIn={Boolean(customer)}
         storeAddress={store?.address}
+        storePin={store?.pin ?? undefined}
         items={cart}
         onUpdateQuantity={handleUpdateQuantity}
         onClearCart={handleClearCart}

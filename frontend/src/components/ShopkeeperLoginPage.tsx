@@ -144,6 +144,7 @@ export const ShopkeeperLoginPage: React.FC = () => {
               </span>
             </button>
           </form>
+          <Link to="/store/signup" className="block text-center text-sm underline">Create a merchant account and store</Link>
 
         </div>
 

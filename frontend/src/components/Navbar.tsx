@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { ShoppingBag, User as UserIcon, LogOut, Zap, MapPin } from 'lucide-react';
 
 interface NavbarProps {
+  location?: string;
   cartCount: number;
   cartTotal: number;
   onOpenCart: () => void;
@@ -11,6 +12,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
+  location,
   cartCount,
   cartTotal,
   onOpenCart,
@@ -41,7 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Clean minimal location tag */}
           <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-cream border border-stone-200/80 text-[11px] font-medium text-stone-700">
             <MapPin className="w-3.5 h-3.5 text-nukkad-700 shrink-0" />
-            <span>Koramangala, Bengaluru</span>
+            <span>{location || 'Selected store'}</span>
             <span className="w-1 h-1 rounded-full bg-stone-300 mx-0.5"></span>
             <span className="text-emerald-700 font-semibold">Local delivery</span>
           </div>

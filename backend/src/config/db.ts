@@ -17,9 +17,8 @@ export const pool = new Pool({
   max: 12,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  options: process.env.PGOPTIONS,
+  ssl: process.env.PG_SSL === 'false' ? false : { ca: caCert, rejectUnauthorized: false }
 });
 
 pool.on('error', (err) => {

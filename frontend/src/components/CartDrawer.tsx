@@ -13,6 +13,7 @@ interface CartDrawerProps {
   customerPhone: string;
   signedIn: boolean;
   storeAddress?: string;
+  storePin?: string;
   onPlaceOrder: (orderData: {
     customerName: string;
     customerPhone: string;
@@ -32,6 +33,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   customerPhone: initialPhone,
   signedIn,
   storeAddress,
+  storePin,
   onPlaceOrder
 }) => {
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('pickup');
@@ -227,7 +229,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       <label className="text-xs">PIN code
                         <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} inputMode="numeric" maxLength={6} className="block w-full border rounded p-2" />
                       </label>
-                      {storeAddress && <p className="text-xs text-stone-600">Delivery PIN code {storeAddress.match(/\b[1-9]\d{5}\b/)?.[0]}</p>}
+                      {(storePin || storeAddress?.match(/\b[1-9]\d{5}\b/)?.[0]) && <p className="text-xs text-stone-600">Delivery PIN code {storePin || storeAddress?.match(/\b[1-9]\d{5}\b/)?.[0]}</p>}
                     </div>
                   ) : <p className="text-xs text-stone-600">Pickup at {storeAddress || 'the shop'}. Collect within 2 hours of the order being marked ready.</p>}
 

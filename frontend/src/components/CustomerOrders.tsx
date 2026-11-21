@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DatabaseChanges } from './DatabaseChanges';
 import { useAuth } from '../context/AuthContext';
-import { checkPayment, CustomerOrder, fetchCustomerOrders } from '../api/client';
+import { cancelPickup, checkPayment, createEventSource, CustomerOrder, fetchCustomerOrders } from '../api/client';
 
 export function CustomerOrders() {
   const { customer, customerToken } = useAuth();
@@ -22,14 +22,19 @@ export function CustomerOrders() {
     const poll = () => refresh().catch(() => setLoadError('Could not load your orders. Retrying…'));
     poll();
     const timer = window.setInterval(poll, 5000);
-    return () => window.clearInterval(timer);
+    const stream = createEventSource();
+    stream.onmessage = event => {
+      if (JSON.parse(event.data).type === 'database.changed') poll();
+    };
+    return () => { window.clearInterval(timer); stream.close(); };
   }, [customer, refresh]);
 
-  async function updatePayment(id: string, cancel = false) {
+  async function updatePayment(id: string, cancel = false, pickup = false) {
     setBusy(id);
     setError('');
     try {
-      await checkPayment(id, cancel);
+      if (pickup) await cancelPickup(id);
+      else await checkPayment(id, cancel);
       await refresh();
     } catch (err: any) {
       setError(err.message);
@@ -55,6 +60,15 @@ export function CustomerOrders() {
               <span>₹{order.total}</span>
             </div>
             <p className="capitalize">{order.deliveryType} · {order.status.replace(/_/g, ' ')}</p>
+            {order.storeName && <p className="font-semibold">{order.storeName}</p>}
+            {order.items && <ul className="text-sm">{order.items.map((item, index) =>
+              <li key={index}>{item.quantity} × {item.name} ({item.unit})</li>)}</ul>}
+            {order.paymentStatus === 'pay_at_pickup' && <>
+              <p>Pay at pickup</p>
+              {['requested', 'confirmed', 'ready_for_pickup'].includes(order.status) &&
+                <button disabled={busy === order.id} onClick={() => updatePayment(order.id, true, true)} className="underline">Cancel reservation</button>}
+            </>}
+            {order.paymentStatus === 'paid_at_pickup' && <p className="text-emerald-800">Paid at pickup</p>}
             {order.paymentStatus === 'paid' && <p className="text-emerald-800">Paid</p>}
             {order.paymentStatus === 'refund_pending' && <p>Refund pending</p>}
             {order.deliveryType === 'pickup' && order.storeAddress && <p>{order.storeAddress}</p>}

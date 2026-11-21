@@ -104,6 +104,8 @@ export interface CustomerOrder {
   pickupUntil: string | null;
   holdUntil: string | null;
   storeAddress?: string;
+  storeName?: string;
+  items?: { name: string; unit: string; quantity: number; price: number }[];
   changes?: DatabaseChange[];
 }
 
@@ -194,3 +196,51 @@ export function simulateRaceApi() {
 export function createEventSource(): EventSource {
   return new EventSource(`${API_BASE}/api/events/live`);
 }
+
+export interface Coordinates { latitude: number; longitude: number }
+export interface NearbyStore extends Store { distance: number | null }
+export interface ShoppingItem { name: string; quantity: number }
+export interface PickupBasket {
+  store: NearbyStore;
+  items: { productId: string; name: string; unit: string; quantity: number; expectedPrice: number }[];
+}
+export interface ShoppingPlan {
+  baskets: PickupBasket[];
+  missing: ShoppingItem[];
+  units: number;
+  basketPrice: number;
+  distance: number | null;
+  score: number;
+}
+
+async function postJson<T>(path: string, body: object): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  });
+  return readApiResponse(response, 'Request failed.');
+}
+
+export const findNearbyStores = (data: { location: string; gps?: Coordinates }) =>
+  postJson<NearbyStore[]>('/api/stores/nearby', data);
+export const findShoppingPlans = (data: { list: string; location: string; gps?: Coordinates }) =>
+  postJson<{ stores: NearbyStore[]; unmatched: ShoppingItem[]; singles: ShoppingPlan[]; split: ShoppingPlan | null }>('/api/shopping-plan', data);
+export const reserveBaskets = (requestKey: string, baskets: PickupBasket[]) =>
+  accountRequest<{ orders: { id: string; storeId: string }[] }>('customer', '/api/customer/pickup-reservations', 'POST', {
+    requestKey,
+    baskets: baskets.map(({ store, items }) => ({ storeId: store.id, items }))
+  });
+export const cancelPickup = (id: string) =>
+  accountRequest('customer', `/api/customer/orders/${encodeURIComponent(id)}/cancel-pickup`, 'POST');
+export const loadCatalog = () =>
+  accountRequest<{ id: string; name: string; unit: string; price: number }[]>('shopkeeper', '/api/inventory/catalog');
+export const saveListing = (input: {
+  productId?: string; name: string; unit: string; price: number; stock: number;
+  expectedStock?: number; listed: boolean; synonyms: string[];
+}, id?: string) => accountRequest('shopkeeper', id ? `/api/inventory/listings/${encodeURIComponent(id)}` : '/api/inventory/listings',
+  id ? 'PUT' : 'POST', input);
+export interface MerchantRegistration {
+  name: string; email: string; password: string;
+  store: { name: string; city: string; locality: string; address: string; pin: string; location?: Coordinates };
+}
+export const registerMerchant = (data: MerchantRegistration) =>
+  postJson<{ user: User; token: string }>('/api/auth/merchant/register', data);

@@ -5,6 +5,8 @@ import { StorefrontPage } from './components/StorefrontPage';
 import { CustomerOrders } from './components/CustomerOrders';
 import { CustomerLoginPage } from './components/CustomerLoginPage';
 import { ShopkeeperLoginPage } from './components/ShopkeeperLoginPage';
+import { MerchantSignup } from './components/MerchantSignup';
+import { ShoppingPlanner } from './components/ShoppingPlanner';
 import { StoreDashboard } from './components/StoreDashboard';
 
 const Router = window.location.protocol === 'nukkad:' ? HashRouter : BrowserRouter;
@@ -17,10 +19,12 @@ export const App: React.FC = () => {
           {/* Customer Shopper Endpoints */}
           <Route path="/" element={<StorefrontPage />} />
           <Route path="/demos" element={<Navigate to="/store/dashboard?tab=database" replace />} />
+          <Route path="/plan" element={<ShoppingPlanner />} />
           <Route path="/orders" element={<CustomerOrders />} />
           <Route path="/login" element={<CustomerLoginPage />} />
 
           {/* Shopkeeper Merchant Portal Endpoints */}
+          <Route path="/store/signup" element={<MerchantSignup />} />
           <Route path="/store/login" element={<ShopkeeperLoginPage />} />
           <Route path="/store/dashboard" element={<StoreDashboard />} />
 

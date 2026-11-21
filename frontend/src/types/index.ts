@@ -13,6 +13,7 @@ export interface Store {
   city: string;
   locality: string;
   address: string;
+  pin?: string | null;
 }
 
 export interface Category {
@@ -58,6 +59,7 @@ export interface KafkaEvent {
 }
 
 export interface InventoryItem {
+  listed: boolean;
   product_id: string;
   product_name: string;
   unit: string;
@@ -68,6 +70,7 @@ export interface InventoryItem {
 }
 
 export interface DashboardStats {
+  storeName?: string;
   storeId: string;
   ordersToday: number;
   lowStockCount: number;

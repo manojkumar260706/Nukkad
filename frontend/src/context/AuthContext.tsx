@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
-import { loginApi, registerApi, getMeApi } from '../api/client';
+import { loginApi, registerApi, getMeApi, registerMerchant, MerchantRegistration } from '../api/client';
 
 interface AuthContextType {
   customer: User | null;
@@ -9,6 +9,7 @@ interface AuthContextType {
   shopkeeperToken: string | null;
   loginCustomer: (email: string, password: string) => Promise<void>;
   registerCustomer: (input: { name: string; email: string; password: string; phone?: string }) => Promise<void>;
+  registerShopkeeper: (input: MerchantRegistration) => Promise<void>;
   loginShopkeeper: (email: string, password: string) => Promise<void>;
   logoutCustomer: () => void;
   logoutShopkeeper: () => void;
@@ -63,6 +64,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.setItem('nukkad_shopkeeper_token', token);
   };
 
+  const registerShopkeeper = async (input: MerchantRegistration) => {
+    const { user, token } = await registerMerchant(input);
+    setShopkeeper(user);
+    setShopkeeperToken(token);
+    localStorage.setItem('nukkad_shopkeeper_token', token);
+  };
+
   const logoutCustomer = () => {
     setCustomer(null);
     setCustomerToken(null);
@@ -85,6 +93,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loginCustomer,
         registerCustomer,
         loginShopkeeper,
+        registerShopkeeper,
         logoutCustomer,
         logoutShopkeeper
       }}

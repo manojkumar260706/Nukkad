@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Lock, Mail, User, Phone, AlertCircle, Sparkles } from 'lucide-react';
 
@@ -15,6 +15,7 @@ export const CustomerLoginPage: React.FC = () => {
 
   const { loginCustomer, registerCustomer } = useAuth();
   const navigate = useNavigate();
+  const { state } = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +34,7 @@ export const CustomerLoginPage: React.FC = () => {
       } else {
         await loginCustomer(email.trim(), password);
       }
-      navigate('/');
+      navigate(state?.returnTo === '/plan' ? '/plan' : '/');
     } catch (err: any) {
       setError(err.message || (isSignUp ? 'Registration failed' : 'Login failed'));
     } finally {

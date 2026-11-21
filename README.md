@@ -175,3 +175,25 @@ Deploy the Vite frontend on Vercel using the `frontend` directory. Deploy the lo
 3. In **Signing & Capabilities**, select your Apple development team. Select your iPhone as the run destination and press **Run**.
 
 The script bundles the storefront in the app and points it at the live Render API. To use a different backend, run `NUKKAD_API_URL=https://your-api.example.com sh ios/build-storefront.sh`. Vercel is optional. Rebuild the bundle and reinstall the app after frontend changes. The app still needs internet access for the API and Razorpay.
+
+### Shopping-list pickup
+
+The shopper can open **Plan a shopping list**, use GPS or type a locality, city, address or PIN, and compare baskets. GPS uses active stores within 10 km of the reported point. A typed match uses a matching store with coordinates as an approximate starting point when available. Without a known point, matching locations remain visible with distance unavailable.
+
+Store-specific listings own price, name, unit, listing state, and available stock. Unlisting keeps historical orders and reservations. The list planner prices from PostgreSQL. Travel and extra-stop weights rank options and are not added to the amount payable. The split planner checks up to 12 nearby stores, comparing pairs and triples against current available quantities.
+
+#### Run locally
+
+1. In two terminals at the repository root, run `npm ci --prefix backend` and `npm ci --prefix frontend`.
+2. For a fresh config, run `cp -n backend/.env.example backend/.env`. Set `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, and `PG_DATABASE`. Set `PG_SSL=false` for a local PostgreSQL instance without TLS. For the pickup-only walkthrough on a local database, set `KAFKA_ENABLED=false` and `OPENSEARCH_ENABLED=false`. For the original online checkout, use your Razorpay Test Mode keys and your existing Aiven settings.
+3. Start the backend with `npm run dev --prefix backend`. Startup applies additive migrations. Start the frontend with `npm run dev --prefix frontend` and open the URL printed by Vite. Its default API proxy points to port 5001.
+4. Run `TEST_DATABASE_URL=postgres://USER:PASSWORD@127.0.0.1:5432/DATABASE npm --prefix backend test` using a local PostgreSQL database where the user can create schemas. The integration test creates and removes its own schema. Without the variable, only the planner unit tests run.
+5. For the iPhone app, rebuild its web assets with `NUKKAD_API_URL=https://YOUR-HTTPS-API sh ios/build-storefront.sh` and reinstall from Xcode. The default URL still targets the previously deployed API. Use an HTTPS API running this version to exercise the new features on iPhone.
+
+#### Demo Lane walkthrough
+
+1. Visit **Merchant sign in → Create a merchant account and store** in separate browser profiles for **Milk Shop** and **Bread Shop**. Give each the locality and address **Demo Lane**, city **Bengaluru**, PIN **560095**, and example demo coordinates **12.93, 77.62**. Sign up two separate shopper accounts.
+2. Under **Shelf Stock Manager → Manage listings → Add a listing**, create Milk (carton, ₹40, quantity 2) in Milk Shop and Bread (loaf, ₹30, quantity 1) in Bread Shop. Keep both listed.
+3. As a shopper, open **Plan a shopping list**, type `2 milk and bread` and `Demo Lane`, then click **Compare baskets**. Each single store shows a missing item and the complete split shows ₹110. Reserve the split.
+4. Keep the shopper’s **My orders** open while each merchant opens **Incoming Orders**. Accept the Milk request, mark it ready, then collect it with the shopper’s six-digit code. Reject Bread or cancel it from My orders. Bread returns to available stock once. Collected Milk remains deducted.
+5. To show the last-unit race, compare `bread` as both shoppers while one loaf is available, then submit both reservations. One succeeds. The test also covers price-change rollback, retrying the same request key, and cross-store order access.

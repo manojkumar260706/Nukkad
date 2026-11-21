@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { PoolClient } from 'pg';
 import { pool } from '../config/db';
 import { triggerOutboxRelay } from '../kafka/outboxRelay';
 import { TOPICS } from '../kafka/client';
@@ -14,158 +15,165 @@ export interface CreateOrderInput {
   customerPhone: string;
   deliveryType?: 'delivery' | 'pickup' | 'counter';
   checkout?: { customerId: string; address?: string; postalCode?: string };
-  items: OrderItemInput[];
+  items: (OrderItemInput & { expectedPrice?: number })[];
+  payAtPickup?: boolean;
 }
 
 export async function createOrderAtomic(input: CreateOrderInput) {
-  const { storeId, customerName, customerPhone, deliveryType = 'delivery', items, checkout } = input;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const order = await createOrderInTransaction(client, input);
+    await client.query('COMMIT');
+    triggerOutboxRelay();
+    return order;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function createOrderInTransaction(client: PoolClient, input: CreateOrderInput) {
+  const { storeId, customerName, customerPhone, deliveryType = 'delivery', items, checkout, payAtPickup } = input;
 
   if (!items?.length || items.some(item => !item.productId || !Number.isInteger(item.quantity) || item.quantity < 1)) {
     throw new Error('Order must contain at least one item.');
   }
 
-  const client = await pool.connect();
+  // 1. Verify store exists
+  const storeRes = await client.query('SELECT name, city, address, pin FROM stores WHERE id = $1 AND is_active = TRUE', [storeId]);
+  if (storeRes.rows.length === 0) {
+    throw new Error(`Store '${storeId}' not found.`);
+  }
+  const store = storeRes.rows[0];
 
-  try {
-    await client.query('BEGIN');
+  if (checkout && !payAtPickup && deliveryType === 'delivery' &&
+      checkout.postalCode !== (store.pin || store.address?.match(/\b[1-9]\d{5}\b/)?.[0])) {
+    throw new Error('This shop does not deliver to that PIN code.');
+  }
+  const holdUntil = checkout && !payAtPickup ? new Date(Date.now() + 20 * 60_000) : null;
 
-    // 1. Verify store exists
-    const storeRes = await client.query('SELECT name, city, address FROM stores WHERE id = $1 AND is_active = TRUE', [storeId]);
-    if (storeRes.rows.length === 0) {
-      throw new Error(`Store '${storeId}' not found.`);
+  // 2. Lock inventory rows with FOR UPDATE and verify stock
+  let subtotal = 0;
+  const itemsProcessed: {
+    productId: string;
+    productName: string;
+    productUnit: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    remainingStock: number;
+    lowStockThreshold: number;
+  }[] = [];
+
+  for (const item of [...items].sort((a, b) => a.productId.localeCompare(b.productId))) {
+    const invRes = await client.query(`
+      SELECT
+        si.stock,
+        si.low_stock_threshold,
+        COALESCE(si.listing_name, p.name) AS product_name,
+        COALESCE(si.listing_unit, p.unit) AS product_unit,
+        COALESCE(si.listing_price, p.price) AS price, si.listed
+      FROM store_inventory si
+      JOIN products p ON si.product_id = p.id
+      WHERE si.store_id = $1 AND si.product_id = $2
+      FOR UPDATE OF si;
+    `, [storeId, item.productId]);
+
+    if (!invRes.rows.length || (!invRes.rows[0].listed && deliveryType !== 'counter')) {
+      throw new Error(`Product '${item.productId}' not available at this store.`);
     }
-    const store = storeRes.rows[0];
 
-    if (checkout && deliveryType === 'delivery' &&
-        checkout.postalCode !== store.address?.match(/\b[1-9]\d{5}\b/)?.[0]) {
-      throw new Error('This shop does not deliver to that PIN code.');
+    const inv = invRes.rows[0];
+    const currentStock = parseInt(inv.stock, 10);
+    const price = parseFloat(inv.price);
+
+    if (item.expectedPrice !== undefined && Math.round(price * 100) !== Math.round(item.expectedPrice * 100)) {
+      throw new Error(`Price changed for ${inv.product_name}. Refresh your plan and try again.`);
     }
-    const holdUntil = checkout ? new Date(Date.now() + 20 * 60_000) : null;
-
-    // 2. Lock inventory rows with FOR UPDATE and verify stock
-    let subtotal = 0;
-    const itemsProcessed: {
-      productId: string;
-      productName: string;
-      quantity: number;
-      unitPrice: number;
-      totalPrice: number;
-      remainingStock: number;
-      lowStockThreshold: number;
-    }[] = [];
-
-    for (const item of [...items].sort((a, b) => a.productId.localeCompare(b.productId))) {
-      const invRes = await client.query(`
-        SELECT 
-          si.stock,
-          si.low_stock_threshold,
-          p.name AS product_name,
-          p.price
-        FROM store_inventory si
-        JOIN products p ON si.product_id = p.id
-        WHERE si.store_id = $1 AND si.product_id = $2
-        FOR UPDATE OF si;
-      `, [storeId, item.productId]);
-
-      if (invRes.rows.length === 0) {
-        throw new Error(`Product '${item.productId}' not available at this store.`);
-      }
-
-      const inv = invRes.rows[0];
-      const currentStock = parseInt(inv.stock, 10);
-      const price = parseFloat(inv.price);
-
-      if (currentStock === 0) throw new Error(`Out of stock: ${inv.product_name}. The last unit was already reserved or sold.`);
+    if (currentStock === 0) throw new Error(`Out of stock: ${inv.product_name}. The last unit was already reserved or sold.`);
 
     if (currentStock < item.quantity) {
-        throw new Error(
-          `Only ${currentStock} unit(s) of "${inv.product_name}" remaining on shelf. Cannot fulfill ${item.quantity}.`
-        );
-      }
-
-      const newStock = currentStock - item.quantity;
-      const lineTotal = price * item.quantity;
-      subtotal += lineTotal;
-
-      // Decrement inventory
-      await client.query(`
-        UPDATE store_inventory
-        SET stock = $1, updated_at = CURRENT_TIMESTAMP
-        WHERE store_id = $2 AND product_id = $3
-      `, [newStock, storeId, item.productId]);
-
-      itemsProcessed.push({
-        productId: item.productId,
-        productName: inv.product_name,
-        quantity: item.quantity,
-        unitPrice: price,
-        totalPrice: lineTotal,
-        remainingStock: newStock,
-        lowStockThreshold: parseInt(inv.low_stock_threshold, 10)
-      });
+      throw new Error(
+        `Only ${currentStock} unit(s) of "${inv.product_name}" remaining on shelf. Cannot fulfill ${item.quantity}.`
+      );
     }
 
-    const deliveryFee = checkout && deliveryType === 'delivery' ? 30 : 0;
-    const totalAmount = Math.round((subtotal + deliveryFee) * 100) / 100;
-    const orderId = randomUUID();
-    const orderNumber = orderId.replace(/-/g, '');
+    const newStock = currentStock - item.quantity;
+    const lineTotal = price * item.quantity;
+    subtotal += lineTotal;
 
+    // Decrement inventory
     await client.query(`
-      INSERT INTO orders (id, order_number, store_id, customer_name, customer_phone, delivery_type,
-        status, subtotal, delivery_fee, total_amount, customer_id, delivery_address, payment_status, hold_until)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-    `, [orderId, orderNumber, storeId, customerName, customerPhone, deliveryType,
-      checkout ? 'awaiting_payment' : deliveryType === 'counter' ? 'collected' : 'confirmed',
-      subtotal, deliveryFee, totalAmount, checkout?.customerId, checkout?.address,
-      checkout ? 'awaiting_payment' : deliveryType === 'counter' ? 'paid_at_counter' : 'legacy', holdUntil]);
+      UPDATE store_inventory
+      SET stock = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE store_id = $2 AND product_id = $3
+    `, [newStock, storeId, item.productId]);
 
-    // 5. Insert Order Items
-    for (const it of itemsProcessed) {
-      await client.query(`
-        INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price)
-        VALUES ($1, $2, $3, $4, $5)
-      `, [orderId, it.productId, it.quantity, it.unitPrice, it.totalPrice]);
-    }
-
-    // 6. Insert into Transactional Outbox (committed in same transaction)
-    const outboxPayload = {
-      orderId,
-      orderNumber,
-      storeId,
-      storeName: store.name,
-      city: store.city,
-      deliveryType,
-      totalAmount,
-      items: itemsProcessed,
-      timestamp: new Date().toISOString()
-    };
-
-    await client.query(`
-      INSERT INTO outbox (topic, event_type, payload, status)
-      VALUES ($1, $2, $3, 'pending')
-    `, [TOPICS.ORDERS, checkout ? 'order.held' : 'order.placed', JSON.stringify(outboxPayload)]);
-
-    await client.query('COMMIT');
-
-    // Immediately trigger outbox relay
-    triggerOutboxRelay();
-
-    return {
-      orderId,
-      orderNumber,
-      storeName: store.name,
-      subtotal,
-      deliveryFee,
-      totalAmount,
-      holdUntil,
-      items: itemsProcessed
-    };
-  } catch (err: any) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
+    itemsProcessed.push({
+      productId: item.productId,
+      productName: inv.product_name,
+      productUnit: inv.product_unit,
+      quantity: item.quantity,
+      unitPrice: price,
+      totalPrice: lineTotal,
+      remainingStock: newStock,
+      lowStockThreshold: parseInt(inv.low_stock_threshold, 10)
+    });
   }
+
+  const deliveryFee = checkout && !payAtPickup && deliveryType === 'delivery' ? 30 : 0;
+  const totalAmount = Math.round((subtotal + deliveryFee) * 100) / 100;
+  const orderId = randomUUID();
+  const orderNumber = orderId.replace(/-/g, '');
+
+  await client.query(`
+    INSERT INTO orders (id, order_number, store_id, customer_name, customer_phone, delivery_type,
+      status, subtotal, delivery_fee, total_amount, customer_id, delivery_address, payment_status, hold_until)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+  `, [orderId, orderNumber, storeId, customerName, customerPhone, deliveryType,
+    payAtPickup ? 'requested' : checkout ? 'awaiting_payment' : deliveryType === 'counter' ? 'collected' : 'confirmed',
+    subtotal, deliveryFee, totalAmount, checkout?.customerId, checkout?.address,
+    payAtPickup ? 'pay_at_pickup' : checkout ? 'awaiting_payment' : deliveryType === 'counter' ? 'paid_at_counter' : 'legacy', holdUntil]);
+
+  // 5. Insert Order Items
+  for (const it of itemsProcessed) {
+    await client.query(`
+      INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price, product_name, product_unit)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [orderId, it.productId, it.quantity, it.unitPrice, it.totalPrice, it.productName, it.productUnit]);
+  }
+
+  // 6. Insert into Transactional Outbox (committed in same transaction)
+  const outboxPayload = {
+    orderId,
+    orderNumber,
+    storeId,
+    storeName: store.name,
+    city: store.city,
+    deliveryType,
+    totalAmount,
+    items: itemsProcessed,
+    timestamp: new Date().toISOString()
+  };
+
+  await client.query(`
+    INSERT INTO outbox (topic, event_type, payload, status)
+    VALUES ($1, $2, $3, 'pending')
+  `, [TOPICS.ORDERS, checkout ? 'order.held' : 'order.placed', JSON.stringify(outboxPayload)]);
+
+  return {
+    orderId,
+    orderNumber,
+    storeName: store.name,
+    subtotal,
+    deliveryFee,
+    totalAmount,
+    holdUntil,
+    items: itemsProcessed
+  };
 }
 
 export async function restockProduct(storeId: string, productId: string, addQuantity: number) {

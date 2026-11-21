@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { DatabaseDemoRunner } from './DatabaseDemoRunner';
+import { ListingEditor } from './ListingEditor';
 import { DatabaseChanges } from './DatabaseChanges';
 import { DashboardStats, KafkaEvent } from '../types';
 import {
@@ -28,6 +29,10 @@ import {
 } from 'lucide-react';
 
 function nextOrderStatus(order: { status: string; delivery_type: string; payment_status: string }) {
+  if (order.payment_status === 'paid_at_pickup') return undefined;
+  if (order.payment_status === 'pay_at_pickup') {
+    return ({ requested: 'confirmed', confirmed: 'ready_for_pickup', ready_for_pickup: 'collected' } as Record<string, string>)[order.status];
+  }
   if (order.delivery_type === 'counter' || !['paid', 'legacy'].includes(order.payment_status)) return undefined;
   const stages = order.delivery_type === 'pickup'
     ? ['confirmed', 'preparing', 'ready_for_pickup', 'collected']
@@ -136,7 +141,7 @@ export const StoreDashboard: React.FC = () => {
         setEvents((prev) => [newEvent, ...prev.slice(0, 49)]);
 
         // Live refresh inventory and orders when event arrives
-        if (['order.placed', 'order.held', 'inventory.changed'].includes(data.type)) {
+        if (['order.placed', 'order.held', 'inventory.changed', 'database.changed'].includes(data.type)) {
           loadData();
         }
       } catch (err) {
@@ -224,7 +229,7 @@ export const StoreDashboard: React.FC = () => {
               </div>
               <div className="text-[11px] text-emerald-400 font-mono mt-0.5 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Koramangala Store · Live Shelf Operations</span>
+                <span>{stats?.storeName || 'Your store'} · Live inventory</span>
               </div>
             </div>
           </div>
@@ -373,6 +378,7 @@ export const StoreDashboard: React.FC = () => {
         {/* TAB 1: Shelf Stock Manager */}
         {activeTab === 'inventory' && (
           <div className="bg-white rounded-2xl border border-stone-200 shadow-xs overflow-hidden space-y-4 p-5">
+            <ListingEditor inventory={stats?.inventory || []} refresh={loadData} />
             {/* Search Filter Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -526,10 +532,10 @@ export const StoreDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-serif font-bold text-lg text-stone-900">
-                  Live Orders Stream
+                  Incoming Orders
                 </h3>
                 <p className="text-xs text-stone-500">
-                  Orders placed by customers atomically guarded and broadcast through Kafka.
+                  Accept pickup requests and track fulfilment. Orders update automatically.
                 </p>
               </div>
             </div>
@@ -550,9 +556,7 @@ export const StoreDashboard: React.FC = () => {
                         <span className="font-semibold text-xs text-stone-900">
                           {ord.customer_name}
                         </span>
-                        <span className="text-[11px] text-stone-500">
-                          ({ord.customer_phone})
-                        </span>
+                        {ord.customer_phone && <span className="text-[11px] text-stone-500">({ord.customer_phone})</span>}
                       </div>
                       <div className="text-[11px] text-stone-500 font-mono mt-1 flex items-center gap-3">
                         <span>Total: ₹{ord.total_amount}</span>
@@ -566,6 +570,7 @@ export const StoreDashboard: React.FC = () => {
                     <div className="text-xs text-stone-700">
                       <p className="capitalize">{ord.payment_status === 'legacy' ? 'Previous order' : ord.payment_status.replace(/_/g, ' ')}</p>
                       {ord.delivery_address && <p>{ord.delivery_address}</p>}
+                      {ord.items?.map((item: { name: string; quantity: number; unit: string }, i: number) => <p key={i}>{item.quantity} × {item.name} ({item.unit})</p>)}
                     </div>
 
                     {/* Status Dropdown */}
@@ -580,8 +585,10 @@ export const StoreDashboard: React.FC = () => {
                         <option value={ord.status}>{ord.status.replace(/_/g, ' ')}</option>
                         {nextOrderStatus(ord) && (
                           <>
-                            <option value={nextOrderStatus(ord)}>{nextOrderStatus(ord)?.replace(/_/g, ' ')}</option>
-                            {ord.status !== 'out_for_delivery' && <option value="cancelled">Cancel order</option>}
+                            <option value={nextOrderStatus(ord)}>{ord.status === 'requested' ? 'Accept request' : nextOrderStatus(ord)?.replace(/_/g, ' ')}</option>
+                            {ord.payment_status === 'pay_at_pickup'
+                              ? ord.status === 'requested' && <option value="rejected">Reject request</option>
+                              : ord.status !== 'out_for_delivery' && <option value="cancelled">Cancel order</option>}
                           </>
                         )}
                       </select>

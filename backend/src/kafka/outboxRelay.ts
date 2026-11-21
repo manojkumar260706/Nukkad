@@ -75,5 +75,5 @@ export function startOutboxRelay(intervalMs = 1500) {
 }
 
 export function triggerOutboxRelay() {
-  setImmediate(processOutboxBatch);
+  if (process.env.KAFKA_ENABLED !== 'false') setImmediate(processOutboxBatch);
 }

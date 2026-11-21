@@ -37,7 +37,7 @@ async function gateway(path = '', body?: object): Promise<PaymentLink> {
   return response.json() as Promise<PaymentLink>;
 }
 
-async function withLockedOrder<T>(id: string, scope: 'customer_id' | 'store_id' | 'id', value: string,
+export async function withLockedOrder<T>(id: string, scope: 'customer_id' | 'store_id' | 'id', value: string,
   run: (client: PoolClient, order: any) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
@@ -56,7 +56,7 @@ async function withLockedOrder<T>(id: string, scope: 'customer_id' | 'store_id' 
   }
 }
 
-async function releaseStock(client: PoolClient, order: any) {
+export async function releaseStock(client: PoolClient, order: any) {
   const { rows } = await client.query(`
     SELECT oi.product_id, p.name, SUM(oi.quantity)::integer AS quantity
     FROM order_items oi JOIN products p ON p.id = oi.product_id
@@ -82,7 +82,7 @@ function customerOrder(order: any) {
     id: order.id, orderNumber: order.order_number, status: order.status, paymentStatus: order.payment_status,
     deliveryType: order.delivery_type, total: order.total_amount, paymentUrl: order.payment_url,
     pickupCode: order.pickup_code, pickupUntil: order.pickup_until, holdUntil: order.hold_until,
-    storeAddress: order.store_address, changes: order.changes
+    storeAddress: order.store_address, storeName: order.store_name, items: order.items, changes: order.changes
   };
 }
 
@@ -216,7 +216,10 @@ export async function reconcilePendingCheckouts() {
 
 export async function listCustomerOrders(customerId: string) {
   const { rows } = await pool.query(`
-    SELECT o.*, s.address AS store_address,
+    SELECT o.*, s.address AS store_address, s.name AS store_name,
+      (SELECT jsonb_agg(jsonb_build_object('name', COALESCE(oi.product_name, p.name),
+        'unit', COALESCE(oi.product_unit, p.unit), 'quantity', oi.quantity, 'price', oi.unit_price) ORDER BY oi.id)
+        FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id = o.id) AS items,
       COALESCE((SELECT jsonb_agg(to_jsonb(change) ORDER BY change.id DESC)
         FROM (SELECT id, source_table, row_id, before_state, after_state, changed_at
           FROM store_changes WHERE source_table = 'orders' AND row_id = o.id AND store_id = o.store_id

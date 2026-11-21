@@ -163,6 +163,7 @@ export async function migrate() {
         IF prior IS DISTINCT FROM current_state THEN
           INSERT INTO store_changes (store_id, source_table, row_id, before_state, after_state)
           VALUES (NEW.store_id, TG_TABLE_NAME, tracked_row_id, prior, current_state);
+          PERFORM pg_notify('nukkad_changes', 'changed');
         END IF;
         RETURN NEW;
       END;
@@ -174,6 +175,23 @@ export async function migrate() {
         AFTER INSERT OR UPDATE OF status, payment_status ON orders
         FOR EACH ROW WHEN (NEW.store_id IS NOT NULL)
         EXECUTE FUNCTION record_nukkad_store_change();
+    `);
+
+    await client.query(`
+      ALTER TABLE stores ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION, ADD COLUMN IF NOT EXISTS pin VARCHAR(6);
+      ALTER TABLE store_inventory ADD COLUMN IF NOT EXISTS listing_name VARCHAR(150),
+        ADD COLUMN IF NOT EXISTS listing_unit VARCHAR(50), ADD COLUMN IF NOT EXISTS listing_price NUMERIC(10,2)
+        CHECK (listing_price >= 0), ADD COLUMN IF NOT EXISTS listed BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_name VARCHAR(150),
+        ADD COLUMN IF NOT EXISTS product_unit VARCHAR(50);
+      CREATE TABLE IF NOT EXISTS pickup_reservation_requests (
+        customer_id VARCHAR(50) REFERENCES users(id),
+        request_key UUID NOT NULL,
+        request_hash TEXT NOT NULL,
+        orders JSONB,
+        PRIMARY KEY (customer_id, request_key)
+      );
     `);
 
     // Indexes for high performance

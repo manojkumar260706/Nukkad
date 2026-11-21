@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { pool } from '../config/db';
@@ -19,33 +19,37 @@ export async function registerUser(input: {
   email: string;
   password: string;
   role?: 'customer' | 'shopkeeper';
-  storeId?: string;
+  store?: { name: string; city: string; locality: string; address: string; pin: string; latitude?: number; longitude?: number };
   phone?: string;
 }): Promise<{ user: UserPayload; token: string }> {
-  const { name, email, password, role = 'customer', storeId, phone } = input;
-
-  const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
-  if (existing.rows.length > 0) {
-    throw new Error('An account with this email already exists.');
+  const { name, email, password, role = 'customer', store, phone } = input;
+  if ((role === 'shopkeeper') !== Boolean(store)) throw new Error('Merchant registration requires a new store.');
+  const storeId = store ? randomUUID() : undefined;
+  const userId = randomUUID();
+  const normalizedEmail = email.toLowerCase().trim();
+  const passwordHash = await bcrypt.hash(password, 10);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (store) {
+      await client.query(`
+        INSERT INTO stores (id, name, city, locality, address, pin, latitude, longitude)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `, [storeId, store.name, store.city, store.locality, store.address, store.pin, store.latitude, store.longitude]);
+    }
+    await client.query(`
+      INSERT INTO users (id, name, email, password_hash, role, store_id, phone)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `, [userId, name, normalizedEmail, passwordHash, role, storeId, phone]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if ((error as { code?: string }).code === '23505') throw new Error('An account with this email already exists.');
+    throw error;
+  } finally {
+    client.release();
   }
-
-  const salt = await bcrypt.genSalt(10);
-  const passwordHash = await bcrypt.hash(password, salt);
-  const userId = `usr-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-  await pool.query(`
-    INSERT INTO users (id, name, email, password_hash, role, store_id, phone)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
-  `, [userId, name, email.toLowerCase().trim(), passwordHash, role, storeId || null, phone || null]);
-
-  const user: UserPayload = {
-    id: userId,
-    name,
-    email: email.toLowerCase().trim(),
-    role,
-    storeId,
-    phone
-  };
+  const user: UserPayload = { id: userId, name, email: normalizedEmail, role, storeId, phone };
 
   const token = jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
   return { user, token };
