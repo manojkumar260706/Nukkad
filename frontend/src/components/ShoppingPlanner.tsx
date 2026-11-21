@@ -212,36 +212,60 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
   }
 
   function planCard(plan: ShoppingPlan, title: string) {
-    return <article className="space-y-3 rounded-xl border bg-white p-4">
-      <h3 className="font-serif text-xl font-bold">{title}</h3>
-      <p className="text-sm"><strong>{money(plan.basketPrice)}</strong> basket · {plan.units} {plan.units === 1 ? 'unit' : 'units'}
-        {plan.distance !== null && ` · ${plan.distance.toFixed(1)} km estimated`}</p>
-      {plan.baskets.map(basket => {
-        const { store, items } = basket;
-        const purchased = paid.includes(basketKey(basket));
-        return <section key={store.id} className="rounded bg-stone-50 p-3">
-        <h4 className="font-semibold">{store.name}</h4>
-        <p className="text-xs text-stone-600">{store.address}</p>
-        <ul className="mt-1 text-sm">{items.map(item => <li key={item.productId}>
-          {item.quantity} × {item.name} ({item.unit}) · {money(item.expectedPrice)} each
-        </li>)}</ul>
-        <div className="mt-2 flex items-center gap-3 text-sm">
-          <strong>{money(items.reduce((total, item) => total + item.quantity * item.expectedPrice, 0))}</strong>
-          {customer ? <button type="button" disabled={busy || Boolean(pending) || purchased} onClick={() => {
-            setPhone(customer.phone || '');
-            setError('');
-            setSelectedBasket(basket);
-          }} className="rounded bg-nukkad-900 px-3 py-2 text-white disabled:opacity-50">
-            {purchased ? 'Paid' : `Buy from ${store.name}`}
-          </button> : <Link to="/login" state={{ returnTo: '/?chat=open' }} className="underline">Sign in to buy</Link>}
-        </div>
-      </section>; })}
-      {plan.missing.length > 0 && <p className="text-sm text-amber-900">Missing: {plan.missing.map(item => `${item.quantity} × ${item.name}`).join(', ')}</p>}
-      {plan.units > 0 && (customer
-        ? <button onClick={() => reserve(plan)} disabled={busy || Boolean(pending) || plan.baskets.some(basket => paid.includes(basketKey(basket)))} className="rounded bg-nukkad-900 px-4 py-2 text-sm text-white">
-          {plan.missing.length ? 'Reserve available items' : 'Reserve and pay at pickup'}
-        </button>
-        : <Link to="/login" state={{ returnTo: '/?chat=open' }} className="text-sm underline">Sign in to reserve</Link>)}
+    const isSplit = plan.baskets.length > 1;
+    const checkoutBlocked = busy || Boolean(pending);
+    const reserveBlocked = checkoutBlocked || plan.baskets.some(basket => paid.includes(basketKey(basket)));
+    const reserveAction = plan.units > 0 && (customer
+      ? <button type="button" onClick={() => reserve(plan)} disabled={reserveBlocked}
+        className="rounded-xl border border-nukkad-800 px-3 py-2 text-sm font-semibold text-nukkad-900 hover:bg-nukkad-50 disabled:opacity-50">
+        Reserve for pickup
+      </button>
+      : <Link to="/login" state={{ returnTo: '/?chat=open' }} className="text-sm underline">Sign in to reserve</Link>);
+
+    return <article className="flex h-full min-w-0 flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+      <header>
+        <h3 className="break-words font-serif text-xl font-bold text-nukkad-950">{title}</h3>
+        {!isSplit && <p className="break-words text-xs text-stone-600">{plan.baskets[0]?.store.address}</p>}
+        <p className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-stone-600">
+          <strong className="text-lg tabular-nums text-nukkad-950">{money(plan.basketPrice)}</strong>
+          <span>{plan.units} {plan.units === 1 ? 'unit' : 'units'}</span>
+          {plan.distance !== null && <span>{plan.distance.toFixed(1)} km estimated</span>}
+        </p>
+      </header>
+      <div className={isSplit ? 'grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2' : 'grow'}>
+        {plan.baskets.map(basket => {
+          const { store, items } = basket;
+          const purchased = paid.includes(basketKey(basket));
+          return <section key={store.id} className={isSplit ? 'flex min-w-0 flex-col rounded-xl bg-stone-50 p-3' : 'flex h-full flex-col border-t border-stone-100 pt-2'}>
+            {isSplit && <header>
+              <h4 className="break-words text-sm font-semibold">{store.name}</h4>
+              <p className="break-words text-xs text-stone-600">{store.address}</p>
+            </header>}
+            <ul className="grow divide-y divide-stone-100 text-sm">
+              {items.map(item => <li key={item.productId} className="flex flex-wrap items-baseline justify-between gap-x-3 py-1.5">
+                <span className="min-w-0 break-words">{item.quantity} × {item.name} <span className="text-xs text-stone-600">({item.unit})</span></span>
+                <span className="whitespace-nowrap text-xs tabular-nums text-stone-600">{money(item.expectedPrice)} each</span>
+              </li>)}
+            </ul>
+            {!isSplit && plan.missing.length > 0 && <p className="my-2 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
+              <strong>Missing</strong> · {plan.missing.map(item => `${item.quantity} × ${item.name}`).join(', ')}
+            </p>}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {isSplit && <strong className="mr-auto text-sm tabular-nums">{money(items.reduce((total, item) => total + item.quantity * item.expectedPrice, 0))}</strong>}
+              {customer ? <button type="button" disabled={checkoutBlocked || purchased} onClick={() => {
+                setPhone(customer.phone || '');
+                setError('');
+                setSelectedBasket(basket);
+              }} aria-label={purchased ? undefined : `Buy from ${store.name}`}
+                className="rounded-xl bg-nukkad-900 px-3 py-2 text-sm font-semibold text-white hover:bg-nukkad-800 disabled:opacity-50">
+                {purchased ? 'Paid' : 'Buy now'}
+              </button> : <Link to="/login" state={{ returnTo: '/?chat=open' }} className="text-sm underline">Sign in to buy</Link>}
+              {!isSplit && reserveAction}
+            </div>
+          </section>;
+        })}
+      </div>
+      {isSplit && <div>{reserveAction}</div>}
     </article>;
   }
 
@@ -292,9 +316,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
           {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         </div>
         <form onSubmit={ask} className="relative shrink-0 space-y-2 border-t border-stone-200 bg-white px-3 py-3">
-          {speech.listening && <div className="absolute bottom-full right-3 z-10 mb-2">
-            <ListeningPopup onStop={() => speech.toggleDictation(language)} />
-          </div>}
+          <ListeningPopup open={speech.listening} onStop={() => speech.toggleDictation(language)} />
           <div className="flex items-end gap-1.5 rounded-2xl border border-stone-200 bg-stone-50 p-1.5 focus-within:border-nukkad-600">
             <textarea aria-label="Message Nukkad" rows={2} required maxLength={1000} value={message}
               onChange={event => setMessage(event.target.value)}
@@ -379,7 +401,9 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
       <section className="space-y-3">
         <h2 className="font-serif text-xl font-bold">Single-store options</h2>
         <p className="text-sm text-stone-600">We rank fewer missing items first, then more units filled, then lower basket price plus ₹8 per estimated kilometre. Unknown distances are excluded from the estimate.</p>
-        {plans.singles.map(plan => <div key={plan.baskets[0].store.id}>{planCard(plan, plan.baskets[0].store.name)}</div>)}
+        <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2">
+          {plans.singles.map(plan => <div key={plan.baskets[0].store.id}>{planCard(plan, plan.baskets[0].store.name)}</div>)}
+        </div>
       </section>
     </> : null}
       </div>}

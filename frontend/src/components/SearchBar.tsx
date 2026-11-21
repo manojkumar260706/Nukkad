@@ -84,9 +84,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
               <Mic className="w-4 h-4" />
             </button>
           </div>
-          {speech.listening && <div className="absolute right-0 top-full z-20 mt-2">
-            <ListeningPopup onStop={handleVoiceSearch} />
-          </div>}
+          <ListeningPopup open={speech.listening} placement="below" onStop={handleVoiceSearch} />
         </div>
 
         {!speech.listening && speech.voiceStatus && (
