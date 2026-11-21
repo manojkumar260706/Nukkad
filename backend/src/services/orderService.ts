@@ -17,6 +17,7 @@ export interface CreateOrderInput {
   checkout?: { customerId: string; address?: string; postalCode?: string };
   items: (OrderItemInput & { expectedPrice?: number })[];
   payAtPickup?: boolean;
+  demoFixtureId?: string;
 }
 
 export async function createOrderAtomic(input: CreateOrderInput) {
@@ -91,7 +92,8 @@ export async function createOrderInTransaction(client: PoolClient, input: Create
       FOR UPDATE OF si;
     `, [storeId, item.productId]);
 
-    if (!invRes.rows.length || (!invRes.rows[0].listed && deliveryType !== 'counter')) {
+    const isDemoFixture = input.demoFixtureId === item.productId && item.productId.startsWith('demo-run-');
+    if (!invRes.rows.length || (!invRes.rows[0].listed && deliveryType !== 'counter' && !isDemoFixture)) {
       throw new Error(`Product '${item.productId}' not available at this store.`);
     }
 

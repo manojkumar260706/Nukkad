@@ -202,6 +202,11 @@ export async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_orders_store ON orders(store_id, created_at DESC);
     `);
 
+    await client.query(`
+      UPDATE store_inventory
+      SET listed = FALSE
+      WHERE listed AND product_id LIKE 'demo-run-%'
+    `);
     await installSampleCatalog(client);
     await client.query('COMMIT');
     console.log('Database migrations completed successfully.');

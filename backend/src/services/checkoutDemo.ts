@@ -20,7 +20,7 @@ export async function runCheckoutDemo(storeId: string, userId: string, scenario:
       INSERT INTO products (id, name, unit, price, mrp)
       VALUES ($1, 'Checkout demo item', '1 pc', 425, 425) RETURNING id
     )
-    INSERT INTO store_inventory (store_id, product_id, stock) SELECT $2, id, 1 FROM fixture
+    INSERT INTO store_inventory (store_id, product_id, stock, listed) SELECT $2, id, 1, FALSE FROM fixture
   `, [productId, storeId]);
 
   const draft = {
@@ -43,7 +43,7 @@ export async function runCheckoutDemo(storeId: string, userId: string, scenario:
     results.push({ action, result: 'Completed' });
   };
   const reserve = async () => {
-    const order = await createOrderAtomic(parseCheckoutInput(draft, userId));
+    const order = await createOrderAtomic({ ...parseCheckoutInput(draft, userId), demoFixtureId: productId });
     orderIds.push(order.orderId);
     return order;
   };
@@ -83,7 +83,7 @@ export async function runCheckoutDemo(storeId: string, userId: string, scenario:
     }));
   } else if (scenario === 'invalid') {
     const submit = async (values: object) => {
-      await createOrderAtomic(parseCheckoutInput({ ...draft, ...values }, userId));
+      await createOrderAtomic({ ...parseCheckoutInput({ ...draft, ...values }, userId), demoFixtureId: productId });
     };
     await steps('Invalid phone number', () => submit({ customerPhone: '12' }), true);
     await steps('Blank address', () => submit({ address: '' }), true);
