@@ -22,7 +22,7 @@ export function LandingPage() {
     const overlay = document.createElement('div');
     overlay.className = 'market-transition';
     overlay.setAttribute('aria-hidden', 'true');
-    if (bounds?.width && bounds.height && hero.current?.naturalWidth) {
+    if (bounds?.width && bounds.height && hero.current) {
       const photo = document.createElement('img');
       photo.src = hero.current.currentSrc || hero.current.src;
       photo.alt = '';
@@ -38,13 +38,12 @@ export function LandingPage() {
     }
     document.body.append(overlay);
 
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.setTimeout(() => {
       window.scrollTo(0, 0);
       navigate('/shop', { flushSync: true });
       overlay.classList.add('market-transition-exit');
       window.setTimeout(() => overlay.remove(), 320);
-    }, reduced ? 220 : 850);
+    }, 1100);
   }
   if (params.get('chat') === 'open') return <Navigate to="/shop?chat=open" replace />;
 
@@ -68,15 +67,16 @@ export function LandingPage() {
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-5 pb-6 pt-4 sm:px-8 lg:pt-0">
         <section className="grid flex-1 items-center content-center gap-8 py-6 lg:grid-cols-2 lg:gap-12">
           <div className="py-3 text-center lg:text-left">
-            <h1 className="landing-reveal mx-auto max-w-xl font-serif lg:mx-0 text-[clamp(3.25rem,7vw,6.2rem)] font-medium leading-[0.94] tracking-[-0.05em]">
-              Your everyday shop, <em className="font-normal text-nukkad-700">around the corner.</em>
+            <h1 className="mx-auto max-w-xl font-serif lg:mx-0 text-[clamp(3.25rem,7vw,6.2rem)] font-medium leading-[0.94] tracking-[-0.05em]">
+              <span className="landing-reveal block">Your everyday shop,</span>
+              <em className="landing-reveal landing-reveal-title block font-normal text-nukkad-700">around the corner.</em>
             </h1>
             <p className="landing-reveal landing-reveal-copy mx-auto mt-5 max-w-md lg:mx-0 text-base leading-relaxed text-stone-700 sm:text-lg">
               See what’s in stock at neighborhood stores, compare baskets, and order for pickup or local delivery where available.
             </p>
             <div className="landing-reveal landing-reveal-actions mt-7 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
               <Link to="/shop" onClick={browseMarket} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-nukkad-900 px-5 py-3 text-sm font-semibold text-white hover:bg-nukkad-800">
-                {opening ? 'Opening market…' : 'Browse market'} <ArrowRight size={17} aria-hidden="true" />
+                {opening ? 'Opening market…' : 'Browse store'} <ArrowRight size={17} aria-hidden="true" />
               </Link>
               <Link to="/shop?chat=open" className="inline-flex min-h-12 items-center gap-2 rounded-full border border-nukkad-900/25 px-5 py-3 text-sm font-semibold hover:bg-white">
                 <MessageCircle size={17} aria-hidden="true" /> Ask Nukkad
