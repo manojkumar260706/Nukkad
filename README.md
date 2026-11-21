@@ -16,6 +16,22 @@ Nukkad lets shoppers check what’s in stock at neighborhood stores, compare sho
 
 PostgreSQL row locks prevent online shoppers and counter sales from claiming the same last item. The backend records events in a transactional outbox and uses Kafka and OpenSearch for search synchronization. The storefront receives live updates through Server-Sent Events.
 
+## How it works
+
+```mermaid
+flowchart LR
+    Clients["Web storefront and iPhone app"] --> API["Express API"]
+    API --> PG["PostgreSQL"]
+    API --> AI["Gemini and Sarvam AI"]
+    API --> Pay["Razorpay Test Mode"]
+    PG --> Relay["Transactional outbox relay"]
+    Relay --> Kafka["Kafka"]
+    Kafka --> Search["OpenSearch"]
+    Search --> API
+    PG --> SSE["Server-Sent Events"]
+    SSE --> Clients
+```
+
 ## Run locally
 
 Requires Node.js 20+, npm, and PostgreSQL.
