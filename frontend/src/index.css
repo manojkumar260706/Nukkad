@@ -97,13 +97,19 @@
 }
 
 .landing-hero-photo {
-  max-height: min(100%, 28rem);
+  max-width: min(84%, 25rem);
+  max-height: min(72%, 18rem);
 }
 
 @media (min-width: 1024px), (orientation: landscape) and (max-height: 550px) and (min-width: 600px) {
   .landing-hero {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: minmax(0, 1fr);
+  }
+
+  .landing-hero-photo {
+    max-width: min(90%, 31rem);
+    max-height: min(86%, 23rem);
   }
 }
 

@@ -108,7 +108,7 @@ export function LandingPage() {
               </Link>
             </div>
           </div>
-          <figure className="landing-hero-photo mx-auto h-full min-h-0 w-full max-w-xl self-center overflow-hidden rounded-[2rem] bg-nukkad-100 shadow-lg">
+          <figure className="landing-hero-photo mx-auto h-full min-h-0 w-full self-center overflow-hidden rounded-[1.5rem] bg-nukkad-100 shadow-md">
             <img ref={hero} src="/nukkad-shopfront.jpg" alt="Neighborhood grocery shop with baskets of fresh produce by the entrance" width="1120" height="840" fetchPriority="high" className="h-full w-full object-cover" />
           </figure>
         </section>
