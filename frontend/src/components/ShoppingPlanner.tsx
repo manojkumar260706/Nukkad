@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { askShoppingAssistant, checkPayment, Coordinates, createOrderApi, findNearbyStores, findShoppingPlans, NearbyStore, PickupBasket, reserveBaskets, ShoppingItem, ShoppingPlan } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useChatSpeech } from './useChatSpeech';
 
 const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
 
@@ -37,6 +38,9 @@ export function ShoppingPlanner() {
   const navigate = useNavigate();
 
   const [message, setMessage] = useState('');
+  const speech = useChatSpeech(transcript => {
+    setMessage(current => [current.trimEnd(), transcript].filter(Boolean).join(' ').slice(0, 1000));
+  });
   const [language, setLanguage] = useState('auto');
   const [assistantItems, setAssistantItems] = useState<ShoppingItem[]>([]);
   const [chat, setChat] = useState<{ request: string; reply: string }[]>([]);
@@ -60,7 +64,7 @@ export function ShoppingPlanner() {
 
   async function ask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || !message.trim()) return;
+    if (busy || speech.listening || !message.trim()) return;
     setError('');
     if (!gps && !location.trim()) {
       setError('Enter your location below or use GPS before asking for a plan.');
@@ -238,11 +242,15 @@ export function ShoppingPlanner() {
           {chat.map((turn, index) => <div key={index} className="space-y-1">
             <p><strong>You</strong> · {turn.request}</p>
             <p><strong>Nukkad</strong> · {turn.reply}</p>
+            {speech.canSpeak && <button type="button" onClick={() => speech.toggleReadAloud(index, turn.reply)}
+              disabled={speech.listening} className="text-nukkad-800 underline disabled:opacity-50">
+              {speech.speaking === index ? 'Stop reading' : 'Read aloud'}
+            </button>}
           </div>)}
         </div>}
         <form onSubmit={ask} className="space-y-2">
           <label className="grid gap-1 text-sm">Message language
-            <select className="rounded border p-2" value={language} onChange={event => setLanguage(event.target.value)}>
+            <select disabled={speech.listening} className="rounded border p-2" value={language} onChange={event => setLanguage(event.target.value)}>
               <option value="auto">Detect automatically</option><option value="en-IN">English</option>
               <option value="hi-IN">Hindi</option><option value="kn-IN">Kannada</option>
               <option value="ta-IN">Tamil</option><option value="te-IN">Telugu</option><option value="ml-IN">Malayalam</option>
@@ -252,7 +260,17 @@ export function ShoppingPlanner() {
             <textarea required maxLength={1000} value={message} onChange={event => setMessage(event.target.value)}
               placeholder="I need two cartons of milk and a loaf of bread" className="rounded border p-2" />
           </label>
-          <button disabled={busy} className="rounded bg-nukkad-900 px-4 py-2 text-sm text-white disabled:opacity-50">Send to chatbot</button>
+          <div className="flex flex-wrap gap-2">
+            <button disabled={busy || speech.listening} className="rounded bg-nukkad-900 px-4 py-2 text-sm text-white disabled:opacity-50">Send to chatbot</button>
+            {speech.canDictate && <button type="button" disabled={busy || speech.speaking !== undefined}
+              onClick={() => speech.toggleDictation(language)} className="rounded border border-nukkad-800 px-4 py-2 text-sm text-nukkad-900 disabled:opacity-50">
+              {speech.listening ? 'Stop dictation' : 'Use microphone'}
+            </button>}
+          </div>
+          <p className="text-xs text-stone-600">{speech.canDictate
+            ? 'Choose a language before dictating. Automatic mode uses English for the microphone.'
+            : 'Microphone dictation is unavailable in this browser. You can type your message.'}</p>
+          {speech.voiceStatus && <p role="status" className="text-sm text-stone-700">{speech.voiceStatus}</p>}
         </form>
       </> : <Link to="/login" state={{ returnTo: '/plan' }} className="text-sm underline">Sign in to use the chatbot</Link>}
     </section>
