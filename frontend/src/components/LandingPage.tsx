@@ -73,8 +73,8 @@ export function LandingPage() {
   if (params.get('chat') === 'open') return <Navigate to="/shop?chat=open" replace />;
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f8f5ed] text-nukkad-950">
-      <header className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-5 sm:px-8">
+    <div className="flex h-[100dvh] flex-col overflow-hidden overscroll-none bg-[#f8f5ed] text-nukkad-950">
+      <header className="mx-auto flex w-full max-w-6xl shrink-0 flex-wrap items-center justify-between gap-2 px-5 py-3 sm:px-8 sm:py-5">
         <Link to="/" className="inline-flex items-center gap-3">
           <img src="/nukkad-192.png" alt="" width="44" height="44" className="rounded-[13px]" />
           <span className="font-serif text-3xl font-bold leading-none tracking-tight">Nukkad</span>
@@ -89,17 +89,17 @@ export function LandingPage() {
         </nav>
       </header>
 
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-5 pb-6 pt-4 sm:px-8 lg:pt-0">
-        <section className="grid flex-1 items-center content-center gap-8 py-6 lg:grid-cols-2 lg:gap-12">
-          <div className="py-3 text-center lg:text-left">
-            <h1 aria-label="Your everyday shop, around the corner." className="mx-auto max-w-xl font-serif lg:mx-0 text-[clamp(3.25rem,7vw,6.2rem)] font-medium leading-[0.94] tracking-[-0.05em]">
+      <main className="mx-auto flex w-full max-w-6xl min-h-0 flex-1 flex-col px-5 pb-3 sm:px-8 sm:pb-5">
+        <section className="landing-hero grid min-h-0 flex-1 items-center gap-4 py-2 lg:gap-10">
+          <div className="text-center lg:text-left">
+            <h1 aria-label="Your everyday shop, around the corner." className="mx-auto max-w-xl font-serif lg:mx-0 text-[clamp(1.875rem,min(7.8vw,10.5dvh),5.75rem)] font-medium leading-[0.94] tracking-[-0.05em]">
               <span className="block"><RevealText text="Your everyday shop," /></span>
               <em className="block font-normal text-nukkad-700"><RevealText text="around the corner." delay={410} /></em>
             </h1>
-            <p className="mx-auto mt-5 max-w-md lg:mx-0 text-base leading-relaxed text-stone-700 sm:text-lg">
+            <p className="mx-auto mt-2 max-w-md sm:mt-4 lg:mx-0 text-sm leading-snug text-stone-700 sm:text-base">
               See what’s in stock at neighborhood stores, compare baskets, and order for pickup or local delivery where available.
             </p>
-            <div className="mt-7 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+            <div className="mt-3 flex sm:mt-5 flex-wrap items-center justify-center gap-3 lg:justify-start">
               <Link to="/shop" onClick={browseMarket} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-nukkad-900 px-5 py-3 text-sm font-semibold text-white hover:bg-nukkad-800">
                 {opening ? 'Opening market…' : 'Browse store'} <ArrowRight size={17} aria-hidden="true" />
               </Link>
@@ -108,12 +108,12 @@ export function LandingPage() {
               </Link>
             </div>
           </div>
-          <figure className="mx-auto w-full max-w-xl overflow-hidden rounded-[2rem] bg-nukkad-100 shadow-lg">
-            <img ref={hero} src="/nukkad-shopfront.jpg" alt="Neighborhood grocery shop with baskets of fresh produce by the entrance" width="1120" height="840" fetchPriority="high" className="aspect-[4/3] w-full object-cover" />
+          <figure className="landing-hero-photo mx-auto h-full min-h-0 w-full max-w-xl self-center overflow-hidden rounded-[2rem] bg-nukkad-100 shadow-lg">
+            <img ref={hero} src="/nukkad-shopfront.jpg" alt="Neighborhood grocery shop with baskets of fresh produce by the entrance" width="1120" height="840" fetchPriority="high" className="h-full w-full object-cover" />
           </figure>
         </section>
 
-        <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-nukkad-900/15 pt-5 text-sm text-stone-700">
+        <footer className="landing-footer shrink-0 border-t border-nukkad-900/15 pt-3 text-xs text-stone-700">
           <span>Every shelf, live online.</span>
         </footer>
       </main>
