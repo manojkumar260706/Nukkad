@@ -1,131 +1,137 @@
-# Nukkad · Every shelf, live online.
-> **A real-time online store for retail chains and kirana shops, built on PostgreSQL, Kafka, and OpenSearch on Aiven.**  
-> *Theme: Retail & E-commerce: Build the Online Store*  
-> *Team: LastMinute | College: Atria Institute of Technology*
+# Nukkad - Real-Time Retail Storefront
+
+A real-time online retail platform built on Aiven for PostgreSQL, Apache Kafka, and OpenSearch.
+
+Theme: Retail & E-commerce: Build the Online Store  
+Team: LastMinute | College: Atria Institute of Technology
 
 ---
 
-## 🌟 The Vision
-Physical shelves and online catalogues frequently drift apart, causing phantom inventory, overselling, and customer disappointment. **Nukkad** solves this at the database, event streaming, and search layers:
-1. **Never Oversell:** PostgreSQL row-level locks (`SELECT ... FOR UPDATE`) ensure two customers can never buy the last physical item.
-2. **Reliable by Design:** The **Transactional Outbox Pattern** saves the order and the outbox event row in *one atomic database transaction*. No lost events, no double-counts.
-3. **Event-Driven Sync:** Apache Kafka streams `order.placed` and `inventory.changed` events to consumers that update real-time projections and search documents.
-4. **Search that Forgives:** OpenSearch with Hinglish and typo synonyms (`"bluetoth"` ➔ Bluetooth, `"atta"` / `"gehu"` ➔ Wheat flour, `"chawal"` ➔ Basmati rice) with store-level filtering.
-5. **Live Kirana Dashboard:** Real-time stock counters, low-stock alerts, and an interactive **Kafka Event Feed** terminal stream via Server-Sent Events (SSE).
+## Architecture Overview
 
----
+Nukkad addresses catalogue and physical shelf drift by connecting customer orders, inventory updates, and product search via an event-driven architecture.
 
-## 🏗️ Architecture
+1. **Anti-Oversell Guarantee:** PostgreSQL row-level locks (`SELECT ... FOR UPDATE`) ensure two customers cannot purchase the last physical unit.
+2. **Transactional Outbox Pattern:** Order creation and outbox event persistence execute within a single atomic database transaction.
+3. **Event Streaming:** Apache Kafka streams `order.placed` and `inventory.restocked` events to asynchronous consumer workers.
+4. **Search Synchronization:** OpenSearch indexes products with fuzzy matching and Indian retail synonym analysis, filtered by physical store availability.
+5. **Separated Merchant Console:** A dedicated store manager portal provides real-time stock overrides, order status dispatch, and event logging.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      NUKKAD FRONTEND                        │
-│   • Customer Storefront (/)   • Kirana Tablet (/store)      │
-└──────────────┬──────────────────────────────▲───────────────┘
-               │ HTTP REST                    │ Live SSE Stream
-               ▼                              │
-┌──────────────────────────────┐              │
-│       Node.js / Express      │              │
-│          REST API            │              │
-└──────┬───────────────┬───────┘              │
-       │               │                      │
-       │ (1) Atomic    │ (Search queries)     │
-       │     Order TX  │                      │
-       ▼               ▼                      │
-┌──────────────┐ ┌──────────────┐             │
-│   Aiven for  │ │   Aiven for  │◄────────────┼──────────┐
-│  PostgreSQL  │ │  OpenSearch  │             │          │
-│              │ │ (Fuzzy, Syn) │             │          │
-│ • Orders     │ └──────────────┘             │          │
-│ • Inventory  │                              │          │
-│ • Outbox Tab │                              │          │
-└──────┬───────┘                              │          │
-       │ (2) Outbox Relay                     │          │
-       ▼                                      │          │
-┌───────────────────────────────────────────┐ │          │
-│             Aiven for Apache Kafka        │ │          │
-│ Topics: store.orders | store.inventory    │ │          │
-└──────┬────────────────────────────┬───────┘ │          │
-       │ (3) Consume                │ (3) Consume        │
-       ▼                            ▼                    │
-┌───────────────────────┐  ┌─────────────────────────┐  │
-│ Consumer: Inventory   │  │ Consumer: Search Sync   ├───┘
-│ Projections & Alerts  │  │ Updates OpenSearch Doc  │
-└───────────────────────┘  └─────────────────────────┘
++-------------------------------------------------------------+
+|                      NUKKAD FRONTEND                        |
+|   - Customer Storefront (/)   - Merchant Console (/store)   |
++------------------------------+------------------------------+
+                               | HTTP REST / SSE Stream
+                               v
++-------------------------------------------------------------+
+|                     Node.js / Express                       |
+|                          REST API                           |
++--------------+-------------------------------+--------------+
+               |                               |
+               | (1) Atomic Transaction        | (Search)
+               v                               v
++------------------------------+ +----------------------------+
+|     Aiven for PostgreSQL     | |     Aiven for OpenSearch   |
+|   - Orders & Order Items     | |   - Fuzzy & Synonym Search |
+|   - Inventory & Stores       | |   - Store-level filtering  |
+|   - Users (Bcrypt Auth)      | +----------------------------+
+|   - Transactional Outbox     |               ^
++--------------+---------------+               |
+               |                               |
+               | (2) Outbox Relay              | (4) Sync
+               v                               |
++----------------------------------------------+--------------+
+|                   Aiven for Apache Kafka                    |
+|          Topics: store.orders | store.inventory             |
++--------------+-------------------------------+--------------+
+               | (3) Consume                   | (3) Consume
+               v                               v
++------------------------------+ +----------------------------+
+|  Consumer: Inventory Alerts  | |   Consumer: Search Sync    |
++------------------------------+ +----------------------------+
 ```
 
 ---
 
-## ⚡ The 3 Aiven Services in Action
+## Infrastructure and Technologies
 
-| Service | Role in Nukkad | Real Implementation |
+| Component | Technology | Implementation Details |
 |---|---|---|
-| **Aiven for PostgreSQL 18.7** | Primary ACID database | Atomic transactions with `SELECT ... FOR UPDATE` row locks, Order + Outbox committed together. |
-| **Aiven for Apache Kafka** | Event Backbone | Topics `store.orders` and `store.inventory` with SASL SCRAM-SHA-256 + SSL CA authentication. Reliable outbox relay worker. |
-| **Aiven for OpenSearch 3.6.0** | Typo-tolerant search engine | Custom synonym analyzer (`atta`, `gehu`, `chawal`, `bluetoth`) + store-level localized inventory filters. |
+| Database | Aiven for PostgreSQL 18.7 | ACID transactions, row-level locks, transactional outbox table, bcrypt credential storage. |
+| Streaming | Aiven for Apache Kafka | SASL SCRAM-SHA-256 with SSL CA validation. Topics: `store.orders`, `store.inventory`. |
+| Search | Aiven for OpenSearch 3.6.0 | Typo tolerance (`fuzziness: AUTO`), synonym analyzer (`atta`, `gehu`, `chawal`, `toor dal`, `bluetoth`). |
+| Backend | Node.js, Express, TypeScript | REST endpoints, outbox polling relay, KafkaJS consumer group, Server-Sent Events (SSE). |
+| Frontend | React 18, Vite, TypeScript, Tailwind CSS | Client-side routing with separate customer and merchant portals, live stock indicators. |
 
 ---
 
-## 🚀 Running Locally
+## Routing and Endpoints
+
+### Frontend Routes
+- `/`: Customer storefront (search, product catalogue, cart, checkout).
+- `/login`: Customer sign in and account registration.
+- `/store/login`: Store manager and merchant authentication.
+- `/store/dashboard`: Merchant console (stock adjustments, order status, event feed).
+
+### Core API Endpoints
+- `GET /api/health`: Health status of PostgreSQL, Kafka, and OpenSearch.
+- `GET /api/products/search`: Search products via OpenSearch with fuzzy matching and filters.
+- `POST /api/orders`: Atomic order checkout transaction with outbox record.
+- `PUT /api/inventory/stock`: Direct inventory count override by storekeeper.
+- `PUT /api/orders/:id/status`: Update order dispatch state.
+- `POST /api/auth/register`: User registration with role assignment.
+- `POST /api/auth/login`: User login with role enforcement.
+- `POST /api/simulate-race`: Parallel checkout race condition test.
+- `GET /api/events/live`: Server-Sent Events stream for real-time Kafka event display.
+
+---
+
+## Local Development
 
 ### Prerequisites
-- Node.js v20+ and npm
-- Valid Aiven service credentials (already pre-configured in `backend/.env`)
+- Node.js (version 20 or higher) and npm
+- Aiven service credentials (configured in `backend/.env`)
 
-### 1. Start the Backend
+### 1. Backend Service
 ```bash
 cd backend
 npm install
 npm run dev
 ```
-Backend runs on **`http://localhost:5000`** with live connections to Aiven PostgreSQL, Kafka, and OpenSearch.
+The API server starts on `http://localhost:5000`.
 
-### 2. Start the Frontend
+### 2. Frontend Application
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Frontend runs on **`http://localhost:3000`**.
+The client application starts on `http://localhost:3000`.
 
 ---
 
-## 🚢 Deployment Guide
+## Deployment Configuration
 
-### Frontend Deployment (Vercel)
-1. Push code to your GitHub repository.
-2. In [Vercel](https://vercel.com), click **Add New Project** and select the repository.
-3. Set **Root Directory** to `frontend`.
-4. In **Environment Variables**, set:
-   - `VITE_API_BASE_URL`: URL of your deployed backend (e.g. `https://nukkad-api.onrender.com`).
-5. Click **Deploy**. Vercel will build and serve your frontend with SSL globally.
+### Frontend (e.g., Vercel, Netlify)
+1. Set repository root to `frontend`.
+2. Configure build command: `npm run build`
+3. Configure output directory: `dist`
+4. Set environment variable: `VITE_API_BASE_URL` pointing to the deployed backend URL.
 
-### Backend Deployment (Render or Railway)
-1. In [Render](https://render.com), click **New Web Service** and select the repository.
-2. Set **Root Directory** to `backend`.
-3. Set **Build Command**: `npm install && npm run build`
-4. Set **Start Command**: `npm start`
-5. In **Environment Variables**, paste the contents of `backend/.env` (including `ca.pem` certificate content or path).
-6. Click **Deploy**. Render will host the REST API, Kafka consumers, and SSE stream.
+### Backend (e.g., Render, Railway)
+1. Set repository root to `backend`.
+2. Configure build command: `npm install && npm run build`
+3. Configure start command: `npm start`
+4. Set required environment variables from `backend/.env.example`.
 
 ---
 
-## 🏆 Hackathon Demo Script (How to Present)
+## Demo Credentials
 
-1. **The Storefront:** Open `http://localhost:3000`. Show the Koramangala store header and clean editorial design.
-2. **Search that Forgives:**
-   - Type `"bluetoth"` into the search bar. OpenSearch returns Bluetooth Neckband and Earphones instantly despite the typo.
-   - Click `"gehu"` or `"atta"`. OpenSearch synonym analyzer returns Wheat Atta.
-3. **Cart & Atomic Checkout:** Add Atta and Toor Dal to cart. Click **View Cart**, select **Delivery**, and click **Place Order**. Show confetti and order placed badge.
-4. **The Kirana Tablet & Kafka Event Feed:** Switch to the **Storekeeper Tablet** tab. Show:
-   - Orders Today incremented.
-   - **Kafka Event Feed** terminal showing real-time `order.placed`, `inventory.changed`, and `search.synced` events.
-   - Click **+5 Restock** on an item: watch Kafka publish `inventory.restocked` and update OpenSearch without page reloads.
-5. **The Showstopper (Anti-Oversell Battle Test):**
-   - Click **Race Condition Demo** in the top bar.
-   - Click **Fire Concurrency Battle Now**: Two parallel checkouts race for 1 single stock unit.
-   - Show that Buyer 1 gets the order, while Buyer 2 receives an immediate ACID rejection. Prove **zero overselling**!
+For evaluation and demonstration purposes:
 
----
+- **Customer Account:** `shopper@nukkad.in` / `shopper123`
+- **Storekeeper Account:** `store@nukkad.in` / `store123`
 
-*Built with passion for retail chains and kirana shops across India.*
+Both login views feature a single-click auto-fill option for testing.
