@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Search, Mic, X, SlidersHorizontal } from 'lucide-react';
 import { Category } from '../types';
+import { ListeningPopup } from './ListeningPopup';
+import { useChatSpeech } from './useChatSpeech';
 
 export interface SearchFilters {
   minPrice: string;
@@ -40,23 +42,10 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   const filterCount = [filters.minPrice !== '', filters.maxPrice !== '', filters.inStockOnly,
     filters.sort !== '', selectedCategory !== 'all'].filter(Boolean).length;
 
-  // Voice search using Web Speech API
+  const speech = useChatSpeech(setSearchQuery, 'Voice search text added.');
   const handleVoiceSearch = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert('Voice search is not supported in this browser. Try Chrome/Edge.');
-      return;
-    }
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-IN';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onresult = (event: any) => {
-      const speechText = event.results[0][0].transcript;
-      setSearchQuery(speechText);
-    };
-    recognition.start();
+    if (speech.canDictate) speech.toggleDictation('en-IN');
+    else alert('Voice search is not supported in this browser. Try Chrome or Edge.');
   };
 
   return (
@@ -88,14 +77,21 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             )}
             <button
               onClick={handleVoiceSearch}
-              title="Voice Search"
+              title={speech.listening ? 'Stop voice search' : 'Voice Search'}
+              aria-label={speech.listening ? 'Stop voice search' : 'Voice Search'}
               className="p-1.5 rounded-lg text-stone-500 hover:text-nukkad-800 hover:bg-nukkad-50 transition-colors"
             >
               <Mic className="w-4 h-4" />
             </button>
           </div>
+          {speech.listening && <div className="absolute right-0 top-full z-20 mt-2">
+            <ListeningPopup onStop={handleVoiceSearch} />
+          </div>}
         </div>
 
+        {!speech.listening && speech.voiceStatus && (
+          <p role="status" className="text-xs text-stone-600">{speech.voiceStatus}</p>
+        )}
         <div className="flex flex-wrap items-center gap-2">
         <button type="button" aria-expanded={showFilters} aria-controls="product-filters"
           className="inline-flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold"

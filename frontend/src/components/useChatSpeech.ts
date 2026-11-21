@@ -15,7 +15,7 @@ const speechWindow = window as Window & {
   webkitSpeechRecognition?: new () => Recognition;
 };
 
-export function useChatSpeech(appendTranscript: (text: string) => void) {
+export function useChatSpeech(appendTranscript: (text: string) => void, successMessage = 'Dictation added. Review your message before sending.') {
   const Recognizer = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
   const canSpeak = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
   const recognition = useRef<Recognition>();
@@ -48,11 +48,13 @@ export function useChatSpeech(appendTranscript: (text: string) => void) {
       const transcript = Array.from(event.results, result => result[0]?.transcript ?? '').join(' ').trim();
       if (transcript) {
         appendTranscript(transcript);
-        setVoiceStatus('Dictation added. Review your message before sending.');
+        setVoiceStatus(successMessage);
       }
     };
     session.onerror = ({ error }) => {
       if (recognition.current !== session) return;
+      recognition.current = undefined;
+      setListening(false);
       const denied = error === 'not-allowed' || error === 'service-not-allowed';
       setVoiceStatus(denied ? 'Allow microphone access in your browser settings, or type your message.'
         : error === 'no-speech' ? 'No speech detected. Try again or type your message.'

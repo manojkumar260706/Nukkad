@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { askShoppingAssistant, checkPayment, Coordinates, createOrderApi, findShoppingPlans, PickupBasket, reserveBaskets, ShoppingItem, ShoppingPlan } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { ListeningPopup } from './ListeningPopup';
 import { useChatSpeech } from './useChatSpeech';
 
 const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
@@ -73,6 +74,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
   }, [chat, busy, expanded, view]);
 
   function closeChat() {
+    if (speech.listening) speech.toggleDictation(language);
     setOpen(false);
     requestAnimationFrame(() => launcher.current?.focus());
   }
@@ -289,7 +291,10 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
           {(plans || pending) && <button type="button" onClick={() => { setView('compare'); setError(''); }} className="rounded-xl bg-nukkad-100 px-3 py-2 text-sm font-semibold text-nukkad-900">{plans ? 'View basket comparison' : 'View pending checkout'}</button>}
           {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
         </div>
-        <form onSubmit={ask} className="shrink-0 space-y-2 border-t border-stone-200 bg-white px-3 py-3">
+        <form onSubmit={ask} className="relative shrink-0 space-y-2 border-t border-stone-200 bg-white px-3 py-3">
+          {speech.listening && <div className="absolute bottom-full right-3 z-10 mb-2">
+            <ListeningPopup onStop={() => speech.toggleDictation(language)} />
+          </div>}
           <div className="flex items-end gap-1.5 rounded-2xl border border-stone-200 bg-stone-50 p-1.5 focus-within:border-nukkad-600">
             <textarea aria-label="Message Nukkad" rows={2} required maxLength={1000} value={message}
               onChange={event => setMessage(event.target.value)}
@@ -317,7 +322,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
             </select>
             <span className="text-xs text-stone-500">Gemini · Sarvam AI</span>
           </div>
-          {(speech.voiceStatus || notice) && <p role="status" className="text-xs text-stone-600">{speech.voiceStatus || notice}</p>}
+          {!speech.listening && (speech.voiceStatus || notice) && <p role="status" className="text-xs text-stone-600">{speech.voiceStatus || notice}</p>}
         </form>
       </> : <div className="grid flex-1 place-content-center gap-3 p-6 text-center">
         <p className="text-sm text-stone-700">Sign in to compare nearby baskets with Nukkad Assistant.</p>
