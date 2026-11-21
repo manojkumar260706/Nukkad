@@ -43,6 +43,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
   const [plans, setPlans] = useState<Awaited<ReturnType<typeof findShoppingPlans>>>();
   const [notice, setNotice] = useState('');
   const [locating, setLocating] = useState(false);
+  const [locationRequired, setLocationRequired] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const { customer } = useAuth();
@@ -92,18 +93,26 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
     if (busy || speech.listening || !message.trim()) return;
     setError('');
     if (!gps && !location.trim()) {
-      setError('Enter a locality, city or PIN above, or tap Use GPS.');
+      setNotice('');
+      setLocationRequired(true);
+      setSelectedBasket(undefined);
+      setView('compare');
       return;
     }
+    await sendRequest(location, gps);
+  }
+
+  async function sendRequest(requestLocation: string, requestGps?: Coordinates) {
     setBusy(true);
     try {
-      const reply = await askShoppingAssistant({ message, language, previous: assistantItems, lastTurn: chat[chat.length - 1], location, gps });
+      const reply = await askShoppingAssistant({ message, language, previous: assistantItems, lastTurn: chat[chat.length - 1], location: requestLocation, gps: requestGps });
       setChat(current => [...current, { request: message, reply: reply.replyText, language: reply.replyLanguage }]);
       setAssistantItems(reply.items);
       setMessage('');
       setSelectedBasket(undefined);
       setPlans(reply.plans ?? undefined);
-      if (reply.plans) setView('compare');
+      setLocationRequired(false);
+      setView(reply.plans ? 'compare' : 'chat');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create a plan.');
     } finally {
@@ -114,7 +123,13 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
   async function retryLocation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const typed = location.trim();
-    if (busy || !typed || !assistantItems.length) return;
+    if (busy || !typed) return;
+    if (locationRequired) {
+      setError('');
+      await sendRequest(typed);
+      return;
+    }
+    if (!assistantItems.length) return;
     setBusy(true);
     setError('');
     setNotice('');
@@ -387,9 +402,9 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
     </form>}
     {error && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{error}</p>}
     {notice && <p role="status" className="text-sm text-stone-700">{notice}</p>}
-    {plans && !plans.stores.length && <form onSubmit={retryLocation} className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4">
-      <h3 className="font-semibold text-nukkad-950">No stores matched that location</h3>
-      <p className="text-sm text-stone-600">Try a locality, city or PIN to compare the same basket in another area.</p>
+    {(locationRequired || (plans && !plans.stores.length)) && <form onSubmit={retryLocation} className="space-y-3 rounded-2xl border border-stone-200 bg-white p-4">
+      <h3 className="font-semibold text-nukkad-950">{locationRequired ? 'Choose a shopping location' : 'No stores matched that location'}</h3>
+      <p className="text-sm text-stone-600">{locationRequired ? 'Pick an area with stores or enter your locality, city or PIN.' : 'Try a locality, city or PIN to compare the same basket in another area.'}</p>
       <label className="grid gap-1 text-sm font-medium">Shopping location
         <input value={location} onChange={event => setLocation(event.target.value)} list="assistant-store-localities"
           placeholder="Enter a locality, city or PIN" required maxLength={250}
@@ -406,7 +421,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
         {busy ? 'Comparing…' : 'Compare baskets'}
       </button>
     </form>}
-    {plans && plans.stores.length > 0 ? <>
+    {!locationRequired && plans && plans.stores.length > 0 ? <>
       {plans.unmatched.length > 0 && <p className="rounded bg-amber-50 p-3 text-sm">No nearby listing matches: {plans.unmatched.map(item => item.name).join(', ')}</p>}
       {plans.split && <section className="space-y-3">
         <h2 className="font-serif text-xl font-bold">Split pickup</h2>
