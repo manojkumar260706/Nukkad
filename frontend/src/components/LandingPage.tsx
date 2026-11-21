@@ -1,4 +1,4 @@
-import { type CSSProperties, type MouseEvent, useRef, useState } from 'react';
+import { type CSSProperties, type MouseEvent, useEffect, useRef, useState } from 'react';
 import { ArrowRight, MessageCircle } from 'lucide-react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +27,14 @@ export function LandingPage() {
   const hero = useRef<HTMLImageElement>(null);
   const entering = useRef(false);
   const [opening, setOpening] = useState(false);
+
+  useEffect(() => {
+    if (window.location.protocol !== 'nukkad:') return;
+    const theme = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!theme) return;
+    theme.content = '#f8f5ed';
+    return () => { theme.content = '#ffffff'; };
+  }, []);
 
   function browseMarket(event: MouseEvent<HTMLAnchorElement>) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;

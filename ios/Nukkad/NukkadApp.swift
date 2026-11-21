@@ -5,7 +5,11 @@ import UIKit
 @main
 struct NukkadApp: App {
     var body: some Scene {
-        WindowGroup { StorefrontView() }
+        WindowGroup {
+            StorefrontView()
+                .ignoresSafeArea(.container)
+                .preferredColorScheme(.light)
+        }
     }
 }
 
@@ -20,6 +24,7 @@ struct StorefrontView: UIViewControllerRepresentable {
 final class StorefrontController: UIViewController, WKUIDelegate, WKNavigationDelegate {
     private let url = URL(string: "nukkad://storefront/index.html")!
     private let storefront: WKWebView
+    private var storefrontThemeObservation: NSKeyValueObservation?
     private var paymentWindow: UIViewController?
 
     init() {
@@ -34,7 +39,14 @@ final class StorefrontController: UIViewController, WKUIDelegate, WKNavigationDe
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.984, green: 0.984, blue: 0.976, alpha: 1)
+        let launchColor = UIColor(named: "LaunchBackground") ?? .white
+        view.backgroundColor = launchColor
+        storefront.underPageBackgroundColor = launchColor
+        storefrontThemeObservation = storefront.observe(\.themeColor, options: [.new]) { [weak self] webView, _ in
+            let color = webView.themeColor ?? launchColor
+            self?.view.backgroundColor = color
+            webView.underPageBackgroundColor = color
+        }
         storefront.uiDelegate = self
         storefront.navigationDelegate = self
         embed(storefront, in: self)
