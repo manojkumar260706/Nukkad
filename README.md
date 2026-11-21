@@ -6,6 +6,25 @@ Nukkad lets shoppers check what’s in stock at neighborhood stores, compare sho
 
 ![Nukkad landing page](docs/landing-page.png)
 
+## Demo
+
+Open **[Try Nukkad](https://nukkadshop.vercel.app/)**. Use the demo shopkeeper accounts below to try the dashboard, or check out as a shopper using Razorpay Test Mode.
+
+### Shopkeeper logins
+
+| Email | Password |
+| --- | --- |
+| `Manjiro@gmail.com` | `manjiro123` |
+| `sano@gmail.com` | `sano1234` |
+
+### Razorpay test credit card
+
+| Card number | Expiry | CVV |
+| --- | --- | --- |
+| `4100 2800 0000 1007` | `12/29` | `123` |
+
+**[Watch the race condition demo](https://drive.google.com/file/d/1GLget8BKAD_mgYIvyrhaKcRfIXkJz6vy/view?usp=sharing)**. Two shoppers try to buy the last loaf. One completes a test payment while the other gets an out-of-stock message.
+
 ## Features
 
 | For shoppers | For shopkeepers |
@@ -15,8 +34,6 @@ Nukkad lets shoppers check what’s in stock at neighborhood stores, compare sho
 | Reserve and pay at pickup, or pay online with Razorpay Test Mode. Track orders and view pickup codes in **My orders**. | Verify pickup codes and inspect committed inventory and order changes. |
 
 PostgreSQL row locks prevent online shoppers and counter sales from claiming the same last item. The backend records events in a transactional outbox and uses Kafka and OpenSearch for search synchronization. The storefront receives live updates through Server-Sent Events.
-
-**[Watch the race condition demo](https://drive.google.com/file/d/1GLget8BKAD_mgYIvyrhaKcRfIXkJz6vy/view?usp=sharing)** — Two shoppers try to buy the last loaf. One completes a test payment while the other gets an out-of-stock message.
 
 ## How it works
 
