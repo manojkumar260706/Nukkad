@@ -42,27 +42,66 @@
   }
 }
 
+
 .market-transition {
   position: fixed;
+  inset: 0;
   z-index: 100;
+  overflow: hidden;
+  background-color: #f8f5ed;
+  animation: market-backdrop 850ms ease both;
+}
+
+.market-transition img {
+  position: absolute;
   max-width: none;
   object-fit: cover;
+  animation: market-zoom 850ms cubic-bezier(.46,.02,.2,1) both;
+}
+
+.market-transition.market-transition-exit {
+  background-color: #f8f5ed;
+  animation: market-dismiss 300ms ease-out both;
   pointer-events: none;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  @keyframes landing-reveal {
-    from { opacity: 0; transform: translateY(24px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+@keyframes market-backdrop {
+  from { background-color: transparent; }
+  to { background-color: #f8f5ed; }
+}
 
-  @keyframes landing-photo {
-    from { opacity: 0; transform: scale(.975); }
-    to { opacity: 1; transform: scale(1); }
-  }
+@keyframes market-zoom {
+  from { transform: none; border-radius: 2rem; }
+  to { transform: var(--market-zoom); border-radius: 0; }
+}
 
-  .landing-reveal { animation: landing-reveal 680ms cubic-bezier(.22,.61,.36,1) both; }
-  .landing-reveal-copy { animation-delay: 150ms; }
-  .landing-reveal-actions { animation-delay: 270ms; }
-  .landing-photo { animation: landing-photo 650ms ease-out both; }
+@keyframes market-dismiss {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes landing-reveal {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes landing-photo {
+  from { opacity: 0; transform: scale(.975); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes landing-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.landing-reveal { animation: landing-reveal 680ms cubic-bezier(.22,.61,.36,1) both; }
+.landing-reveal-copy { animation-delay: 150ms; }
+.landing-reveal-actions { animation-delay: 270ms; }
+.landing-photo { animation: landing-photo 650ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-reveal, .landing-photo { animation-name: landing-fade; animation-duration: 220ms; animation-delay: 0ms; }
+  .market-transition { animation-duration: 220ms; }
+  .market-transition img { display: none; }
 }
