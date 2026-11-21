@@ -61,15 +61,13 @@ export const CustomerLoginPage: React.FC = () => {
         </Link>
 
         <div className="flex items-center justify-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-nukkad-800 flex items-center justify-center text-white font-bold text-xl shadow-xs">
-            N
-          </div>
+          <img src="/nukkad-192.png" alt="" width="40" height="40" className="rounded-xl" />
           <div>
             <h1 className="font-serif font-bold text-2xl text-stone-900 tracking-tight">
               Nukkad
             </h1>
             <p className="text-xs text-stone-500">
-              Customer Account
+              Shopper account
             </p>
           </div>
         </div>
@@ -251,7 +249,7 @@ export const CustomerLoginPage: React.FC = () => {
         <div className="mt-6 text-center text-xs text-stone-500">
           <span>Are you a physical retail partner? </span>
           <Link to="/store/login" className="font-semibold text-nukkad-800 hover:underline">
-            Go to Merchant Portal
+            Shopkeeper sign in
           </Link>
         </div>
       </div>

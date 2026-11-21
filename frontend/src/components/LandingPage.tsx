@@ -9,15 +9,17 @@ export function LandingPage() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f8f5ed] text-nukkad-950">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
+      <header className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-5 sm:px-8">
         <Link to="/" className="inline-flex items-center gap-3">
           <img src="/nukkad-192.png" alt="" width="44" height="44" className="rounded-[13px]" />
           <span className="font-serif text-3xl font-bold leading-none tracking-tight">Nukkad</span>
         </Link>
-        <nav aria-label="Main navigation" className="flex items-center gap-4 text-sm font-semibold sm:gap-6">
-          <Link to="/store/login" className="hidden hover:underline sm:inline">For shopkeepers</Link>
+        <nav aria-label="Main navigation" className="flex flex-wrap items-center gap-2 text-xs font-semibold sm:gap-3 sm:text-sm">
           <Link to={customer ? '/orders' : '/login'} className="rounded-full border border-nukkad-900/25 px-4 py-2 hover:bg-white">
-            {customer ? 'My orders' : 'Sign in'}
+            {customer ? 'My orders' : 'Shopper sign in'}
+          </Link>
+          <Link to="/store/login" className="rounded-full bg-nukkad-900 px-4 py-2 text-white hover:bg-nukkad-800">
+            Shopkeeper sign in
           </Link>
         </nav>
       </header>

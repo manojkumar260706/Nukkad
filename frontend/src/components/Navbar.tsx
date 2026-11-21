@@ -101,7 +101,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 hover:bg-stone-50 text-xs font-semibold text-stone-700 transition-all shadow-2xs"
             >
               <UserIcon className="w-3.5 h-3.5 text-stone-500" />
-              <span>Sign In</span>
+              <span>Shopper sign in</span>
             </Link>
           )}
 

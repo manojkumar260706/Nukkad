@@ -39,7 +39,10 @@ export function MerchantSignup() {
 
   return <main className="mx-auto max-w-xl space-y-4 p-5">
     <Link to="/store/login" className="underline">Merchant sign in</Link>
-    <h1 className="font-serif text-3xl font-bold">Create your store</h1>
+    <div className="flex items-center gap-3">
+      <img src="/nukkad-192.png" alt="" width="40" height="40" className="rounded-xl" />
+      <h1 className="font-serif text-3xl font-bold">Create your store</h1>
+    </div>
     <form onSubmit={submit} className="grid gap-4 rounded-2xl border bg-white p-5 sm:grid-cols-2">
       {fields.map(([name, label, type]) => <label key={name} className="grid gap-1 text-sm">
         {label}<input className="min-w-0 rounded border p-2" required name={name} type={type}

@@ -17,7 +17,6 @@ import {
   createEventSource
 } from '../api/client';
 import {
-  Store as StoreIcon,
   Search,
   AlertTriangle,
   Package,
@@ -220,9 +219,7 @@ export const StoreDashboard: React.FC = () => {
       <header className="bg-nukkad-950 text-white border-b border-nukkad-900 sticky top-0 z-30 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-700 flex items-center justify-center text-white font-bold">
-              <StoreIcon className="w-4 h-4" />
-            </div>
+            <img src="/nukkad-192.png" alt="" width="32" height="32" className="rounded-lg" />
             <div>
               <div className="font-serif font-bold text-base tracking-tight leading-none text-stone-100">
                 Nukkad Merchant Console

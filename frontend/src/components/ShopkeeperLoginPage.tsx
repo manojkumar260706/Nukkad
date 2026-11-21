@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Store as StoreIcon, Lock, Mail, AlertCircle, Sparkles, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Sparkles, ArrowLeft, ShieldCheck } from 'lucide-react';
 
 export const ShopkeeperLoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -45,15 +45,13 @@ export const ShopkeeperLoginPage: React.FC = () => {
         </Link>
 
         <div className="flex items-center justify-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-nukkad-900 flex items-center justify-center text-emerald-400 font-bold text-xl shadow-md">
-            <StoreIcon className="w-5 h-5" />
-          </div>
+          <img src="/nukkad-192.png" alt="" width="40" height="40" className="rounded-xl" />
           <div>
             <h1 className="font-serif font-bold text-2xl text-stone-900 tracking-tight">
               Nukkad Merchant Center
             </h1>
             <p className="text-xs text-stone-500 font-mono">
-              Store Manager & Inventory Console
+              Shopkeeper sign in
             </p>
           </div>
         </div>
