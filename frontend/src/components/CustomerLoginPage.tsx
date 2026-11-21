@@ -34,7 +34,7 @@ export const CustomerLoginPage: React.FC = () => {
       } else {
         await loginCustomer(email.trim(), password);
       }
-      navigate(state?.returnTo === '/?chat=open' || state?.returnTo === '/plan' ? '/?chat=open' : '/');
+      navigate(['/shop?chat=open', '/?chat=open', '/plan'].includes(state?.returnTo ?? '') ? '/shop?chat=open' : '/shop');
     } catch (err: any) {
       setError(err.message || (isSignUp ? 'Registration failed' : 'Login failed'));
     } finally {
@@ -53,7 +53,7 @@ export const CustomerLoginPage: React.FC = () => {
     <div className="min-h-screen bg-chalk flex flex-col pt-6 pb-8 sm:justify-center sm:py-12 sm:px-6 lg:px-8 font-sans">
       <div className="px-4 sm:mx-auto sm:w-full sm:max-w-md sm:px-0">
         <Link 
-          to="/"
+          to="/shop"
           className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-900 mb-6 font-medium transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />

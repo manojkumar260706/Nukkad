@@ -37,7 +37,7 @@ export const ShopkeeperLoginPage: React.FC = () => {
     <div className="min-h-screen bg-stone-100 flex flex-col pt-6 pb-8 sm:justify-center sm:py-12 sm:px-6 lg:px-8 font-sans">
       <div className="px-4 sm:mx-auto sm:w-full sm:max-w-md sm:px-0">
         <Link 
-          to="/"
+          to="/shop"
           className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-900 mb-6 font-medium transition-colors"
         >
           <ArrowLeft className="w-3.5 h-3.5" />

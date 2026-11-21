@@ -45,7 +45,7 @@ export function CustomerOrders() {
 
   return (
     <main className="max-w-7xl mx-auto px-5 py-6">
-      <Link to="/" className="mb-5 inline-block text-sm font-medium text-nukkad-800 hover:underline">← Back to shop</Link>
+      <Link to="/shop" className="mb-5 inline-block text-sm font-medium text-nukkad-800 hover:underline">← Back to shop</Link>
       <h1 className="font-serif text-3xl font-bold mb-4">My orders</h1>
       {!customer && !customerToken && <Link to="/login" className="underline">Sign in to see your orders</Link>}
       {loadError && <p role="alert" className="mb-2 text-sm text-red-700">{loadError}</p>}

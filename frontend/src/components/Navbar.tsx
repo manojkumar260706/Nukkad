@@ -27,9 +27,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Brand & Clean Location */}
         <div className="flex items-center gap-6">
           <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-xl bg-nukkad-800 flex items-center justify-center text-white font-bold text-lg shadow-xs group-hover:bg-nukkad-700 transition-colors">
-              N
-            </div>
+            <img src="/nukkad-192.png" alt="" width="36" height="36" className="rounded-xl" />
             <div>
               <div className="font-serif font-bold text-xl text-nukkad-950 tracking-tight leading-none">
                 Nukkad

@@ -220,7 +220,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
         className="rounded-xl border border-nukkad-800 px-3 py-2 text-sm font-semibold text-nukkad-900 hover:bg-nukkad-50 disabled:opacity-50">
         Reserve for pickup
       </button>
-      : <Link to="/login" state={{ returnTo: '/?chat=open' }} className="text-sm underline">Sign in to reserve</Link>);
+      : <Link to="/login" state={{ returnTo: '/shop?chat=open' }} className="text-sm underline">Sign in to reserve</Link>);
 
     return <article className="flex h-full min-w-0 flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
       <header>
@@ -259,7 +259,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
               }} aria-label={purchased ? undefined : `Buy from ${store.name}`}
                 className="rounded-xl bg-nukkad-900 px-3 py-2 text-sm font-semibold text-white hover:bg-nukkad-800 disabled:opacity-50">
                 {purchased ? 'Paid' : 'Buy now'}
-              </button> : <Link to="/login" state={{ returnTo: '/?chat=open' }} className="text-sm underline">Sign in to buy</Link>}
+              </button> : <Link to="/login" state={{ returnTo: '/shop?chat=open' }} className="text-sm underline">Sign in to buy</Link>}
               {!isSplit && reserveAction}
             </div>
           </section>;
@@ -348,7 +348,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
         </form>
       </> : <div className="grid flex-1 place-content-center gap-3 p-6 text-center">
         <p className="text-sm text-stone-700">Sign in to compare nearby baskets with Nukkad Assistant.</p>
-        <Link to="/login" state={{ returnTo: '/?chat=open' }} className="mx-auto rounded-xl bg-nukkad-900 px-4 py-2 text-sm font-semibold text-white">Sign in</Link>
+        <Link to="/login" state={{ returnTo: '/shop?chat=open' }} className="mx-auto rounded-xl bg-nukkad-900 px-4 py-2 text-sm font-semibold text-white">Sign in</Link>
       </div> : <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4">
     {pending && <section className="space-y-2 rounded-xl border bg-white p-4">
       <h2 className="font-semibold">Checkout in progress · {pending.storeName}</h2>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { LandingPage } from './components/LandingPage';
 import { StorefrontPage } from './components/StorefrontPage';
 import { CustomerOrders } from './components/CustomerOrders';
 import { CustomerLoginPage } from './components/CustomerLoginPage';
@@ -16,9 +17,10 @@ export const App: React.FC = () => {
       <Router>
         <Routes>
           {/* Customer Shopper Endpoints */}
-          <Route path="/" element={<StorefrontPage />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/shop" element={<StorefrontPage />} />
           <Route path="/demos" element={<Navigate to="/store/dashboard?tab=database" replace />} />
-          <Route path="/plan" element={<Navigate to="/?chat=open" replace />} />
+          <Route path="/plan" element={<Navigate to="/shop?chat=open" replace />} />
           <Route path="/orders" element={<CustomerOrders />} />
           <Route path="/login" element={<CustomerLoginPage />} />
 
