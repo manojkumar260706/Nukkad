@@ -59,8 +59,8 @@ export function LandingPage() {
       window.scrollTo(0, 0);
       navigate('/shop', { flushSync: true });
       overlay.classList.add('market-transition-exit');
-      window.setTimeout(() => overlay.remove(), 650);
-    }, 300);
+      window.setTimeout(() => overlay.remove(), 830);
+    }, 600);
   }
   if (params.get('chat') === 'open') return <Navigate to="/shop?chat=open" replace />;
 
@@ -88,10 +88,10 @@ export function LandingPage() {
               <span className="block"><RevealText text="Your everyday shop," /></span>
               <em className="block font-normal text-nukkad-700"><RevealText text="around the corner." delay={410} /></em>
             </h1>
-            <p className="landing-reveal landing-reveal-copy mx-auto mt-5 max-w-md lg:mx-0 text-base leading-relaxed text-stone-700 sm:text-lg">
+            <p className="mx-auto mt-5 max-w-md lg:mx-0 text-base leading-relaxed text-stone-700 sm:text-lg">
               See what’s in stock at neighborhood stores, compare baskets, and order for pickup or local delivery where available.
             </p>
-            <div className="landing-reveal landing-reveal-actions mt-7 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-3 lg:justify-start">
               <Link to="/shop" onClick={browseMarket} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-nukkad-900 px-5 py-3 text-sm font-semibold text-white hover:bg-nukkad-800">
                 {opening ? 'Opening market…' : 'Browse store'} <ArrowRight size={17} aria-hidden="true" />
               </Link>
@@ -100,7 +100,7 @@ export function LandingPage() {
               </Link>
             </div>
           </div>
-          <figure className="landing-photo mx-auto w-full max-w-xl overflow-hidden rounded-[2rem] bg-nukkad-100 shadow-lg">
+          <figure className="mx-auto w-full max-w-xl overflow-hidden rounded-[2rem] bg-nukkad-100 shadow-lg">
             <img ref={hero} src="/nukkad-shopfront.jpg" alt="Neighborhood grocery shop with baskets of fresh produce by the entrance" width="1120" height="840" fetchPriority="high" className="aspect-[4/3] w-full object-cover" />
           </figure>
         </section>
