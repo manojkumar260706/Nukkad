@@ -10,7 +10,6 @@ interface AuthContextType {
   loginCustomer: (email: string, password: string) => Promise<void>;
   registerCustomer: (input: { name: string; email: string; password: string; phone?: string }) => Promise<void>;
   loginShopkeeper: (email: string, password: string) => Promise<void>;
-  registerShopkeeper: (input: { name: string; email: string; password: string; phone?: string; storeId?: string }) => Promise<void>;
   logoutCustomer: () => void;
   logoutShopkeeper: () => void;
 }
@@ -64,13 +63,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.setItem('nukkad_shopkeeper_token', token);
   };
 
-  const registerShopkeeper = async (input: { name: string; email: string; password: string; phone?: string; storeId?: string }) => {
-    const { user, token } = await registerApi({ ...input, role: 'shopkeeper', storeId: input.storeId || 'store-koramangala' });
-    setShopkeeper(user);
-    setShopkeeperToken(token);
-    localStorage.setItem('nukkad_shopkeeper_token', token);
-  };
-
   const logoutCustomer = () => {
     setCustomer(null);
     setCustomerToken(null);
@@ -93,7 +85,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loginCustomer,
         registerCustomer,
         loginShopkeeper,
-        registerShopkeeper,
         logoutCustomer,
         logoutShopkeeper
       }}

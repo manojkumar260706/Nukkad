@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { DatabaseDemoRunner } from './DatabaseDemoRunner';
+import { DatabaseChanges } from './DatabaseChanges';
 import { DashboardStats, KafkaEvent } from '../types';
 import {
+  DatabaseChange,
+  fetchDatabaseChanges,
   fetchDashboardStats,
   updateExactStockApi,
+  recordCounterSale,
+  restockProductApi,
   updateOrderStatusApi,
   fetchOrdersApi,
   createEventSource
@@ -12,20 +18,28 @@ import {
 import {
   Store as StoreIcon,
   Search,
-  CheckCircle,
   AlertTriangle,
   Package,
   TrendingUp,
   LogOut,
   RefreshCw,
-  Minus,
   Terminal,
   ShoppingBag
 } from 'lucide-react';
 
+function nextOrderStatus(order: { status: string; delivery_type: string; payment_status: string }) {
+  if (order.delivery_type === 'counter' || !['paid', 'legacy'].includes(order.payment_status)) return undefined;
+  const stages = order.delivery_type === 'pickup'
+    ? ['confirmed', 'preparing', 'ready_for_pickup', 'collected']
+    : ['confirmed', 'preparing', 'out_for_delivery', 'delivered'];
+  const current = stages.indexOf(order.status);
+  return current >= 0 ? stages[current + 1] : undefined;
+}
+
 export const StoreDashboard: React.FC = () => {
-  const { shopkeeper, logoutShopkeeper } = useAuth();
+  const { shopkeeper, shopkeeperToken, logoutShopkeeper } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
 
   const storeId = shopkeeper?.storeId || 'store-koramangala';
 
@@ -33,37 +47,60 @@ export const StoreDashboard: React.FC = () => {
   const [orders, setOrders] = useState<any[]>([]);
   const [events, setEvents] = useState<KafkaEvent[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'events'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'events' | 'database'>(params.get('tab') === 'database' ? 'database' : 'inventory');
   const [isLoading, setIsLoading] = useState(false);
+
+  const [changes, setChanges] = useState<DatabaseChange[]>([]);
+  const [changesError, setChangesError] = useState('');
+  const [changesLoaded, setChangesLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!shopkeeper || activeTab !== 'database') return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const rows = await fetchDatabaseChanges();
+        if (active) {
+          setChanges(rows);
+          setChangesError('');
+          setChangesLoaded(true);
+        }
+      } catch {
+        if (active) setChangesError('Could not refresh database changes.');
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 2500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [shopkeeper, activeTab]);
 
   // Inline editing state: productId -> new stock number
   const [editingStock, setEditingStock] = useState<Record<string, number>>({});
+  const [stockEditsFrom, setStockEditsFrom] = useState<Record<string, number>>({});
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   // Check auth
   useEffect(() => {
-    if (!shopkeeper) {
+    if (!shopkeeper && !shopkeeperToken) {
       navigate('/store/login');
     }
-  }, [shopkeeper, navigate]);
+  }, [shopkeeper, shopkeeperToken, navigate]);
 
   // Load stats and orders
   const loadData = async () => {
+    if (!shopkeeper) return;
     setIsLoading(true);
     try {
       const [statsData, ordersData] = await Promise.all([
-        fetchDashboardStats(storeId),
-        fetchOrdersApi(storeId)
+        fetchDashboardStats(),
+        fetchOrdersApi()
       ]);
       setStats(statsData);
       setOrders(ordersData);
 
-      // Pre-fill editing stock values
-      const initialStock: Record<string, number> = {};
-      statsData.inventory.forEach((i) => {
-        initialStock[i.product_id] = i.stock;
-      });
-      setEditingStock(initialStock);
     } catch (err) {
       console.error('Failed to load storekeeper data:', err);
     } finally {
@@ -73,7 +110,9 @@ export const StoreDashboard: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [storeId]);
+    const timer = window.setInterval(loadData, 5000);
+    return () => window.clearInterval(timer);
+  }, [storeId, shopkeeper]);
 
   // Live SSE listener for orders and stock updates
   useEffect(() => {
@@ -97,7 +136,7 @@ export const StoreDashboard: React.FC = () => {
         setEvents((prev) => [newEvent, ...prev.slice(0, 49)]);
 
         // Live refresh inventory and orders when event arrives
-        if (data.type === 'order.placed' || data.type === 'inventory.changed') {
+        if (['order.placed', 'order.held', 'inventory.changed'].includes(data.type)) {
           loadData();
         }
       } catch (err) {
@@ -108,32 +147,51 @@ export const StoreDashboard: React.FC = () => {
     return () => {
       eventSource.close();
     };
-  }, [storeId]);
+  }, [storeId, shopkeeper]);
+
+  function clearStockEdit(productId: string) {
+    const removeProduct = (previous: Record<string, number>) =>
+      Object.fromEntries(Object.entries(previous).filter(([id]) => id !== productId));
+    setEditingStock(removeProduct);
+    setStockEditsFrom(removeProduct);
+  }
 
   // Direct stock update handler
-  const handleSaveStock = async (productId: string, newStock: number) => {
+  const handleSaveStock = async (productId: string, newStock: number, expectedStock: number) => {
     setUpdatingId(productId);
     try {
-      await updateExactStockApi(storeId, productId, Math.max(0, newStock));
+      await updateExactStockApi(productId, Math.max(0, newStock), expectedStock);
+      clearStockEdit(productId);
       await loadData();
     } catch (err: any) {
+      clearStockEdit(productId);
+      await loadData();
       alert(err.message || 'Failed to update stock');
     } finally {
       setUpdatingId(null);
     }
   };
 
-  // Quick delta updater (+5, +10, -1)
-  const handleQuickDelta = async (productId: string, currentStock: number, delta: number) => {
-    const newStock = Math.max(0, currentStock + delta);
-    setEditingStock((prev) => ({ ...prev, [productId]: newStock }));
-    await handleSaveStock(productId, newStock);
+  const handleQuickDelta = async (productId: string, delta: number) => {
+    setUpdatingId(productId);
+    try {
+      if (delta < 0) await recordCounterSale(productId, -delta);
+      else await restockProductApi(productId, delta);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Could not update inventory');
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   // Order status update handler
   const handleUpdateOrderStatus = async (orderId: string, status: string) => {
     try {
-      await updateOrderStatusApi(orderId, status);
+      const pickupCode = status === 'collected' ? window.prompt('Enter the customer’s pickup code') : undefined;
+      if (pickupCode === null) return;
+      await updateOrderStatusApi(orderId, status, pickupCode);
+
       await loadData();
     } catch (err: any) {
       alert(err.message || 'Failed to update order status');
@@ -210,7 +268,7 @@ export const StoreDashboard: React.FC = () => {
               Orders Today
             </div>
             <div className="font-serif font-bold text-3xl text-stone-900">
-              {stats?.ordersToday || 38}
+              {stats?.ordersToday ?? '—'}
             </div>
             <div className="text-[10px] text-emerald-700 font-medium flex items-center gap-1 mt-1">
               <TrendingUp className="w-3 h-3" />
@@ -246,21 +304,20 @@ export const StoreDashboard: React.FC = () => {
 
           <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs">
             <div className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider mb-1">
-              Search Index Status
+              Sold-out products
             </div>
             <div className="font-serif font-bold text-2xl text-emerald-800 flex items-center gap-1.5 mt-1">
-              <CheckCircle className="w-6 h-6 text-emerald-600" />
-              <span>In sync</span>
+              <span>{stats?.inventory.filter(item => item.stock === 0).length ?? '—'}</span>
             </div>
             <div className="text-[10px] text-stone-500 font-mono mt-1">
-              Aiven OpenSearch · 0 lag
+              Products with zero available stock
             </div>
           </div>
         </div>
 
         {/* View Switcher Tabs */}
         <div className="flex items-center justify-between border-b border-stone-200 pb-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setActiveTab('inventory')}
               className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
@@ -296,8 +353,22 @@ export const StoreDashboard: React.FC = () => {
               <Terminal className="w-3.5 h-3.5 text-emerald-500" />
               <span>Live Kafka Stream ({events.length})</span>
             </button>
+            <button onClick={() => setActiveTab('database')} aria-pressed={activeTab === 'database'}
+              className={`rounded-lg border px-4 py-2 text-xs font-semibold ${activeTab === 'database' ? 'bg-nukkad-900 text-white' : 'bg-white'}`}>
+              Database changes
+            </button>
           </div>
         </div>
+
+        {activeTab === 'database' && (
+          <section className="space-y-3 rounded-2xl border bg-white p-5">
+            <h2 className="font-serif text-xl font-bold">PostgreSQL changes</h2>
+            <p className="text-sm text-stone-600">Latest committed inventory and order changes for this store. Refreshes automatically.</p>
+            {import.meta.env.VITE_ENABLE_DEMO_ACCOUNTS === 'true' && <DatabaseDemoRunner />}
+            {changesError && <p role="alert" className="text-sm text-red-700">{changesError}</p>}
+            {changesLoaded ? <DatabaseChanges changes={changes} /> : !changesError && <p>Loading changes…</p>}
+          </section>
+        )}
 
         {/* TAB 1: Shelf Stock Manager */}
         {activeTab === 'inventory' && (
@@ -371,12 +442,15 @@ export const StoreDashboard: React.FC = () => {
                                   ...prev,
                                   [item.product_id]: isNaN(val) ? 0 : val
                                 }));
+                                setStockEditsFrom(prev => ({
+                                  ...prev, [item.product_id]: prev[item.product_id] ?? item.stock
+                                }));
                               }}
                               className="w-16 px-2 py-1 border border-stone-300 rounded-md font-mono text-xs font-bold text-center bg-chalk focus:bg-white focus:outline-none focus:ring-1 focus:ring-nukkad-700"
                             />
                             {editVal !== item.stock && (
                               <button
-                                onClick={() => handleSaveStock(item.product_id, editVal)}
+                                onClick={() => handleSaveStock(item.product_id, editVal, stockEditsFrom[item.product_id] ?? item.stock)}
                                 disabled={updatingId === item.product_id}
                                 className="px-2 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded text-[10px] font-bold shadow-2xs"
                               >
@@ -407,29 +481,29 @@ export const StoreDashboard: React.FC = () => {
                         <td className="py-3 px-4 text-right">
                           <div className="inline-flex items-center gap-1">
                             <button
-                              onClick={() => handleQuickDelta(item.product_id, item.stock, -1)}
-                              disabled={item.stock <= 0}
+                              onClick={() => handleQuickDelta(item.product_id, -1)}
+                              disabled={item.stock <= 0 || updatingId === item.product_id}
                               className="p-1 rounded bg-stone-100 hover:bg-stone-200 text-stone-700 disabled:opacity-30"
-                              title="Decrement 1 unit"
+                              title="Record one unit sold at the counter"
                             >
-                              <Minus className="w-3 h-3" />
+                              <span className="text-[11px] font-semibold">Record counter sale</span>
                             </button>
                             <button
-                              onClick={() => handleQuickDelta(item.product_id, item.stock, 5)}
+                              onClick={() => handleQuickDelta(item.product_id, 5)}
                               className="px-2 py-1 rounded bg-stone-100 hover:bg-nukkad-800 hover:text-white text-stone-700 text-[11px] font-mono transition-colors"
                               title="Add 5 units"
                             >
                               +5
                             </button>
                             <button
-                              onClick={() => handleQuickDelta(item.product_id, item.stock, 10)}
+                              onClick={() => handleQuickDelta(item.product_id, 10)}
                               className="px-2 py-1 rounded bg-stone-100 hover:bg-nukkad-800 hover:text-white text-stone-700 text-[11px] font-mono transition-colors"
                               title="Add 10 units"
                             >
                               +10
                             </button>
                             <button
-                              onClick={() => handleSaveStock(item.product_id, 0)}
+                              onClick={() => handleSaveStock(item.product_id, 0, item.stock)}
                               className="px-2 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-medium"
                               title="Mark completely sold out"
                             >
@@ -471,7 +545,7 @@ export const StoreDashboard: React.FC = () => {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-xs text-nukkad-950 bg-stone-100 px-2 py-0.5 rounded">
-                          #{ord.order_number}
+                          #{ord.order_number.slice(0, 8).toUpperCase()}
                         </span>
                         <span className="font-semibold text-xs text-stone-900">
                           {ord.customer_name}
@@ -489,17 +563,27 @@ export const StoreDashboard: React.FC = () => {
                       </div>
                     </div>
 
+                    <div className="text-xs text-stone-700">
+                      <p className="capitalize">{ord.payment_status === 'legacy' ? 'Previous order' : ord.payment_status.replace(/_/g, ' ')}</p>
+                      {ord.delivery_address && <p>{ord.delivery_address}</p>}
+                    </div>
+
                     {/* Status Dropdown */}
                     <div className="flex items-center gap-2">
                       <select
+                        aria-label="Order status"
                         value={ord.status}
+                        disabled={!nextOrderStatus(ord)}
                         onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value)}
-                        className="px-2.5 py-1 text-xs border border-stone-300 rounded-lg bg-white font-medium text-stone-800 focus:outline-none focus:ring-1 focus:ring-nukkad-700"
+                        className="px-2.5 py-1 text-xs border border-stone-300 rounded-lg bg-white font-medium capitalize"
                       >
-                        <option value="confirmed">Confirmed</option>
-                        <option value="preparing">Preparing</option>
-                        <option value="out_for_delivery">Out for Delivery</option>
-                        <option value="delivered">Delivered</option>
+                        <option value={ord.status}>{ord.status.replace(/_/g, ' ')}</option>
+                        {nextOrderStatus(ord) && (
+                          <>
+                            <option value={nextOrderStatus(ord)}>{nextOrderStatus(ord)?.replace(/_/g, ' ')}</option>
+                            {ord.status !== 'out_for_delivery' && <option value="cancelled">Cancel order</option>}
+                          </>
+                        )}
                       </select>
                     </div>
                   </div>

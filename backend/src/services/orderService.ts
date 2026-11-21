@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { pool } from '../config/db';
 import { triggerOutboxRelay } from '../kafka/outboxRelay';
 import { TOPICS } from '../kafka/client';
@@ -11,14 +12,15 @@ export interface CreateOrderInput {
   storeId: string;
   customerName: string;
   customerPhone: string;
-  deliveryType?: 'delivery' | 'pickup';
+  deliveryType?: 'delivery' | 'pickup' | 'counter';
+  checkout?: { customerId: string; address?: string; postalCode?: string };
   items: OrderItemInput[];
 }
 
 export async function createOrderAtomic(input: CreateOrderInput) {
-  const { storeId, customerName, customerPhone, deliveryType = 'delivery', items } = input;
+  const { storeId, customerName, customerPhone, deliveryType = 'delivery', items, checkout } = input;
 
-  if (!items || items.length === 0) {
+  if (!items?.length || items.some(item => !item.productId || !Number.isInteger(item.quantity) || item.quantity < 1)) {
     throw new Error('Order must contain at least one item.');
   }
 
@@ -28,11 +30,17 @@ export async function createOrderAtomic(input: CreateOrderInput) {
     await client.query('BEGIN');
 
     // 1. Verify store exists
-    const storeRes = await client.query('SELECT name, city FROM stores WHERE id = $1', [storeId]);
+    const storeRes = await client.query('SELECT name, city, address FROM stores WHERE id = $1 AND is_active = TRUE', [storeId]);
     if (storeRes.rows.length === 0) {
       throw new Error(`Store '${storeId}' not found.`);
     }
     const store = storeRes.rows[0];
+
+    if (checkout && deliveryType === 'delivery' &&
+        checkout.postalCode !== store.address?.match(/\b[1-9]\d{5}\b/)?.[0]) {
+      throw new Error('This shop does not deliver to that PIN code.');
+    }
+    const holdUntil = checkout ? new Date(Date.now() + 20 * 60_000) : null;
 
     // 2. Lock inventory rows with FOR UPDATE and verify stock
     let subtotal = 0;
@@ -46,7 +54,7 @@ export async function createOrderAtomic(input: CreateOrderInput) {
       lowStockThreshold: number;
     }[] = [];
 
-    for (const item of items) {
+    for (const item of [...items].sort((a, b) => a.productId.localeCompare(b.productId))) {
       const invRes = await client.query(`
         SELECT 
           si.stock,
@@ -56,7 +64,7 @@ export async function createOrderAtomic(input: CreateOrderInput) {
         FROM store_inventory si
         JOIN products p ON si.product_id = p.id
         WHERE si.store_id = $1 AND si.product_id = $2
-        FOR UPDATE;
+        FOR UPDATE OF si;
       `, [storeId, item.productId]);
 
       if (invRes.rows.length === 0) {
@@ -67,7 +75,9 @@ export async function createOrderAtomic(input: CreateOrderInput) {
       const currentStock = parseInt(inv.stock, 10);
       const price = parseFloat(inv.price);
 
-      if (currentStock < item.quantity) {
+      if (currentStock === 0) throw new Error(`Out of stock: ${inv.product_name}. The last unit was already reserved or sold.`);
+
+    if (currentStock < item.quantity) {
         throw new Error(
           `Only ${currentStock} unit(s) of "${inv.product_name}" remaining on shelf. Cannot fulfill ${item.quantity}.`
         );
@@ -95,19 +105,19 @@ export async function createOrderAtomic(input: CreateOrderInput) {
       });
     }
 
-    const deliveryFee = deliveryType === 'delivery' && subtotal < 500 ? 0 : 0; // Free delivery promo!
-    const totalAmount = subtotal + deliveryFee;
+    const deliveryFee = checkout && deliveryType === 'delivery' ? 30 : 0;
+    const totalAmount = Math.round((subtotal + deliveryFee) * 100) / 100;
+    const orderId = randomUUID();
+    const orderNumber = orderId.replace(/-/g, '');
 
-    // 3. Generate sequential order number (e.g. 1042, 1043)
-    const countRes = await client.query('SELECT COUNT(*) FROM orders');
-    const orderNumber = String(1042 + parseInt(countRes.rows[0].count, 10));
-    const orderId = `ord-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-    // 4. Insert Order
     await client.query(`
-      INSERT INTO orders (id, order_number, store_id, customer_name, customer_phone, delivery_type, status, subtotal, delivery_fee, total_amount)
-      VALUES ($1, $2, $3, $4, $5, $6, 'confirmed', $7, $8, $9)
-    `, [orderId, orderNumber, storeId, customerName, customerPhone, deliveryType, subtotal, deliveryFee, totalAmount]);
+      INSERT INTO orders (id, order_number, store_id, customer_name, customer_phone, delivery_type,
+        status, subtotal, delivery_fee, total_amount, customer_id, delivery_address, payment_status, hold_until)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    `, [orderId, orderNumber, storeId, customerName, customerPhone, deliveryType,
+      checkout ? 'awaiting_payment' : deliveryType === 'counter' ? 'collected' : 'confirmed',
+      subtotal, deliveryFee, totalAmount, checkout?.customerId, checkout?.address,
+      checkout ? 'awaiting_payment' : deliveryType === 'counter' ? 'paid_at_counter' : 'legacy', holdUntil]);
 
     // 5. Insert Order Items
     for (const it of itemsProcessed) {
@@ -124,8 +134,6 @@ export async function createOrderAtomic(input: CreateOrderInput) {
       storeId,
       storeName: store.name,
       city: store.city,
-      customerName,
-      customerPhone,
       deliveryType,
       totalAmount,
       items: itemsProcessed,
@@ -134,8 +142,8 @@ export async function createOrderAtomic(input: CreateOrderInput) {
 
     await client.query(`
       INSERT INTO outbox (topic, event_type, payload, status)
-      VALUES ($1, 'order.placed', $2, 'pending')
-    `, [TOPICS.ORDERS, JSON.stringify(outboxPayload)]);
+      VALUES ($1, $2, $3, 'pending')
+    `, [TOPICS.ORDERS, checkout ? 'order.held' : 'order.placed', JSON.stringify(outboxPayload)]);
 
     await client.query('COMMIT');
 
@@ -149,6 +157,7 @@ export async function createOrderAtomic(input: CreateOrderInput) {
       subtotal,
       deliveryFee,
       totalAmount,
+      holdUntil,
       items: itemsProcessed
     };
   } catch (err: any) {
@@ -215,6 +224,7 @@ export async function restockProduct(storeId: string, productId: string, addQuan
 }
 
 export async function simulateRaceCondition(storeId = 'store-koramangala', productId = 'prod-race-condition-demo') {
+  if (productId !== 'prod-race-condition-demo') throw new Error('Use the demo product.');
   // Reset stock to exactly 1
   await pool.query(
     'UPDATE store_inventory SET stock = 1 WHERE store_id = $1 AND product_id = $2',
@@ -225,15 +235,15 @@ export async function simulateRaceCondition(storeId = 'store-koramangala', produ
 
   const buyer1Promise = createOrderAtomic({
     storeId,
-    customerName: 'Aarav Sharma (Buyer 1)',
-    customerPhone: '+91 98765 43210',
-    deliveryType: 'delivery',
+    customerName: 'Counter sale (demo)',
+    customerPhone: '',
+    deliveryType: 'counter',
     items: [{ productId, quantity: 1 }]
   });
 
   const buyer2Promise = createOrderAtomic({
     storeId,
-    customerName: 'Priya Patel (Buyer 2)',
+    customerName: 'Online shopper (demo)',
     customerPhone: '+91 98765 01234',
     deliveryType: 'delivery',
     items: [{ productId, quantity: 1 }]
@@ -259,7 +269,7 @@ export async function simulateRaceCondition(storeId = 'store-koramangala', produ
   };
 }
 
-export async function setProductStock(storeId: string, productId: string, newStock: number) {
+export async function setProductStock(storeId: string, productId: string, newStock: number, expectedStock: number) {
   if (newStock < 0) {
     throw new Error('Stock cannot be negative.');
   }
@@ -281,6 +291,9 @@ export async function setProductStock(storeId: string, productId: string, newSto
     }
 
     const previousStock = parseInt(invRes.rows[0].stock, 10);
+    if (previousStock !== expectedStock) {
+      throw new Error('Stock changed. Refresh the dashboard and try again.');
+    }
     const productName = invRes.rows[0].product_name;
 
     await client.query(`
@@ -314,25 +327,5 @@ export async function setProductStock(storeId: string, productId: string, newSto
   } finally {
     client.release();
   }
-}
-
-export async function updateOrderStatus(orderId: string, status: string) {
-  const allowed = ['confirmed', 'preparing', 'out_for_delivery', 'delivered', 'cancelled'];
-  if (!allowed.includes(status)) {
-    throw new Error(`Invalid status. Allowed values: ${allowed.join(', ')}`);
-  }
-
-  const res = await pool.query(`
-    UPDATE orders
-    SET status = $1
-    WHERE id = $2
-    RETURNING *;
-  `, [status, orderId]);
-
-  if (res.rows.length === 0) {
-    throw new Error('Order not found.');
-  }
-
-  return res.rows[0];
 }
 

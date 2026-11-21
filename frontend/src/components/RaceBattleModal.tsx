@@ -5,13 +5,11 @@ import { simulateRaceApi } from '../api/client';
 interface RaceBattleModalProps {
   isOpen: boolean;
   onClose: () => void;
-  storeId: string;
 }
 
 export const RaceBattleModal: React.FC<RaceBattleModalProps> = ({
   isOpen,
-  onClose,
-  storeId
+  onClose
 }) => {
   const [isRunning, setIsRunning] = useState(false);
   const [battleResult, setBattleResult] = useState<any>(null);
@@ -22,7 +20,7 @@ export const RaceBattleModal: React.FC<RaceBattleModalProps> = ({
     setIsRunning(true);
     setBattleResult(null);
     try {
-      const res = await simulateRaceApi(storeId);
+      const res = await simulateRaceApi();
       setBattleResult(res);
     } catch (err: any) {
       alert(err.message || 'Battle test failed');
@@ -69,7 +67,7 @@ export const RaceBattleModal: React.FC<RaceBattleModalProps> = ({
             <span>The Challenge Requirement: "When someone buys the last item, PostgreSQL makes sure two people can't both get it."</span>
           </div>
           <p className="text-stone-600 leading-relaxed">
-            We reset the test item to <strong>Stock = 1</strong> and fire two checkout HTTP requests at the <em>exact same millisecond</em>. PostgreSQL's row-level lock (<code className="font-mono bg-stone-200 px-1 py-0.5 rounded text-[11px]">SELECT ... FOR UPDATE</code>) guarantees that only 1 transaction acquires the lock and decrements the shelf. The other is safely guarded and rejected.
+            We reset the test item to <strong>Stock = 1</strong> and run a counter sale and an online checkout attempt in parallel. PostgreSQL's row-level lock (<code className="font-mono bg-stone-200 px-1 py-0.5 rounded text-[11px]">SELECT ... FOR UPDATE</code>) guarantees that only 1 transaction acquires the lock and decrements the shelf. The other is safely guarded and rejected.
           </p>
         </div>
 
@@ -102,7 +100,7 @@ export const RaceBattleModal: React.FC<RaceBattleModalProps> = ({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <UserCheck className="w-4 h-4 text-emerald-700" />
-                    <span className="font-bold text-xs text-stone-900">Buyer 1 (Aarav)</span>
+                    <span className="font-bold text-xs text-stone-900">Counter sale</span>
                   </div>
                   <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
                     battleResult.buyer1.status === 'SUCCESS' ? 'bg-emerald-200 text-emerald-900' : 'bg-red-200 text-red-900'
@@ -129,7 +127,7 @@ export const RaceBattleModal: React.FC<RaceBattleModalProps> = ({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <UserX className="w-4 h-4 text-amber-700" />
-                    <span className="font-bold text-xs text-stone-900">Buyer 2 (Priya)</span>
+                    <span className="font-bold text-xs text-stone-900">Online shopper</span>
                   </div>
                   <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
                     battleResult.buyer2.status === 'GUARDED' ? 'bg-amber-200 text-amber-900' : 'bg-emerald-200 text-emerald-900'

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CartItem } from '../types';
-import { X, Plus, Minus, ShoppingBag, Truck, Store as StoreIcon, CheckCircle2 } from 'lucide-react';
-import confetti from 'canvas-confetti';
+import { X, Plus, Minus, ShoppingBag, Truck, Store as StoreIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -9,11 +9,17 @@ interface CartDrawerProps {
   items: CartItem[];
   onUpdateQuantity: (productId: string, quantity: number) => void;
   onClearCart: () => void;
+  customerName: string;
+  customerPhone: string;
+  signedIn: boolean;
+  storeAddress?: string;
   onPlaceOrder: (orderData: {
     customerName: string;
     customerPhone: string;
     deliveryType: 'delivery' | 'pickup';
-  }) => Promise<{ orderNumber: string }>;
+    address?: string;
+    postalCode?: string;
+  }) => Promise<void>;
 }
 
 export const CartDrawer: React.FC<CartDrawerProps> = ({
@@ -22,38 +28,40 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   items,
   onUpdateQuantity,
   onClearCart,
+  customerName: initialName,
+  customerPhone: initialPhone,
+  signedIn,
+  storeAddress,
   onPlaceOrder
 }) => {
-  const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
-  const [customerName, setCustomerName] = useState('Rahul Verma');
-  const [customerPhone, setCustomerPhone] = useState('+91 98450 12345');
+  const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('pickup');
+  const [customerName, setCustomerName] = useState(initialName);
+  const [customerPhone, setCustomerPhone] = useState(initialPhone);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [placedOrder, setPlacedOrder] = useState<string | null>(null);
+  const [address, setAddress] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [error, setError] = useState('');
 
   if (!isOpen) return null;
 
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
-  const deliveryFee = 0; // Free promo
+  const deliveryFee = deliveryType === 'delivery' ? 30 : 0;
   const total = subtotal + deliveryFee;
 
   const handleCheckout = async () => {
     if (items.length === 0) return;
     setIsSubmitting(true);
+    setError('');
     try {
-      const res = await onPlaceOrder({
+      await onPlaceOrder({
         customerName,
         customerPhone,
-        deliveryType
-      });
-
-      setPlacedOrder(res.orderNumber);
-      confetti({
-        particleCount: 120,
-        spread: 70,
-        origin: { y: 0.6 }
+        deliveryType,
+        address: deliveryType === 'delivery' ? address : undefined,
+        postalCode: deliveryType === 'delivery' ? postalCode : undefined
       });
     } catch (err: any) {
-      alert(err.message || 'Checkout failed');
+      setError(err.message || 'Checkout failed');
     } finally {
       setIsSubmitting(false);
     }
@@ -67,8 +75,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
         className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
       />
 
-      <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between">
+      <div className="fixed inset-y-0 right-0 max-w-full flex sm:pl-10">
+        <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col overflow-y-auto">
           {/* Header */}
           <div className="px-6 py-4 border-b border-stone-200 flex items-center justify-between bg-stone-50/50">
             <div>
@@ -76,7 +84,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 Your cart · {items.reduce((s, i) => s + i.quantity, 0)} items
               </h2>
               <p className="text-xs text-stone-500 font-sans">
-                Real-time stock verified against PostgreSQL
+                Stock is held for 20 minutes while you pay
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -97,38 +105,6 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             </div>
           </div>
 
-          {/* Success Screen after order placed */}
-          {placedOrder ? (
-            <div className="p-8 text-center flex-1 flex flex-col items-center justify-center space-y-4">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
-                <CheckCircle2 className="w-10 h-10" />
-              </div>
-              <span className="text-xs uppercase font-mono font-bold tracking-widest text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                Order #{placedOrder} Placed
-              </span>
-              <h3 className="font-serif text-2xl font-bold text-stone-900">
-                Thank you for your order!
-              </h3>
-              <p className="text-sm text-stone-600 max-w-xs font-sans">
-                PostgreSQL committed your order atomically. Kafka event was published and consumed to update stock & search in real-time.
-              </p>
-              <div className="p-3 bg-stone-50 border border-stone-200 rounded-lg text-xs font-mono text-left w-full space-y-1">
-                <div className="text-emerald-700 font-bold">● order.placed → Kafka topic</div>
-                <div className="text-emerald-700 font-bold">● inventory.changed → Projections</div>
-                <div className="text-emerald-700 font-bold">● search.synced → OpenSearch</div>
-              </div>
-              <button
-                onClick={() => {
-                  setPlacedOrder(null);
-                  onClose();
-                }}
-                className="w-full py-3 bg-nukkad-800 text-white rounded-xl font-semibold text-sm hover:bg-nukkad-900 transition-colors"
-              >
-                Continue Shopping
-              </button>
-            </div>
-          ) : (
-            <>
               {/* Items List */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {items.length === 0 ? (
@@ -233,13 +209,27 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     <div>
                       <label className="text-[10px] text-stone-500 font-medium block mb-1">Phone</label>
                       <input
-                        type="text"
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder="9876543210"
                         value={customerPhone}
                         onChange={(e) => setCustomerPhone(e.target.value)}
                         className="w-full px-2.5 py-1.5 bg-white border border-stone-200 rounded-lg text-xs"
                       />
                     </div>
                   </div>
+
+                  {deliveryType === 'delivery' ? (
+                    <div className="grid gap-2">
+                      <label className="text-xs">Delivery address
+                        <input value={address} onChange={(e) => setAddress(e.target.value)} className="block w-full border rounded p-2" />
+                      </label>
+                      <label className="text-xs">PIN code
+                        <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} inputMode="numeric" maxLength={6} className="block w-full border rounded p-2" />
+                      </label>
+                      {storeAddress && <p className="text-xs text-stone-600">Delivery PIN code {storeAddress.match(/\b[1-9]\d{5}\b/)?.[0]}</p>}
+                    </div>
+                  ) : <p className="text-xs text-stone-600">Pickup at {storeAddress || 'the shop'}. Collect within 2 hours of the order being marked ready.</p>}
 
                   {/* Pricing Breakdown */}
                   <div className="space-y-1.5 text-xs pt-2 border-t border-stone-200 font-sans">
@@ -248,8 +238,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       <span className="font-mono">₹{subtotal}</span>
                     </div>
                     <div className="flex justify-between text-stone-600">
-                      <span>Delivery</span>
-                      <span className="text-emerald-700 font-medium">Free</span>
+                      <span>Delivery fee</span>
+                      <span>₹{deliveryFee}</span>
                     </div>
                     <div className="flex justify-between text-sm font-bold text-stone-900 pt-1 border-t border-stone-200">
                       <span>Total</span>
@@ -258,25 +248,28 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   </div>
 
                   <p className="text-[11px] text-stone-500 text-center italic">
-                    Pay by UPI, card or cash on delivery
+                    Razorpay Test Mode
                   </p>
 
+                  {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+                  {!signedIn && <Link to="/login" className="block text-sm underline">Sign in to pay</Link>}
                   {/* Place Order CTA */}
                   <button
                     onClick={handleCheckout}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !signedIn}
                     className="w-full py-3 bg-nukkad-800 hover:bg-nukkad-900 text-white rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {isSubmitting ? (
-                      <span>Reserving stock & committing outbox...</span>
+                      <>
+                        <ShoppingBag aria-hidden="true" className="h-4 w-4" />
+                        <span role="status">Reserving stock…</span>
+                      </>
                     ) : (
-                      <span>Place order · ₹{total}</span>
+                      <span>Continue to payment · ₹{total.toFixed(2)}</span>
                     )}
                   </button>
                 </div>
               )}
-            </>
-          )}
         </div>
       </div>
     </div>

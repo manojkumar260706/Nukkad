@@ -7,7 +7,7 @@ interface NavbarProps {
   cartCount: number;
   cartTotal: number;
   onOpenCart: () => void;
-  onOpenRaceTest: () => void;
+  onOpenRaceTest?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -21,7 +21,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-stone-200 transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 min-h-16 py-2 flex flex-wrap items-center justify-between gap-2 sm:gap-4">
         {/* Brand & Clean Location */}
         <div className="flex items-center gap-6">
           <Link to="/" className="flex items-center gap-2.5 group">
@@ -32,7 +32,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="font-serif font-bold text-xl text-nukkad-950 tracking-tight leading-none">
                 Nukkad
               </div>
-              <div className="text-[10px] text-stone-500 font-sans tracking-tight mt-0.5">
+              <div className="hidden sm:block text-[10px] text-stone-500 font-sans tracking-tight mt-0.5">
                 Every shelf, live online.
               </div>
             </div>
@@ -43,13 +43,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             <MapPin className="w-3.5 h-3.5 text-nukkad-700 shrink-0" />
             <span>Koramangala, Bengaluru</span>
             <span className="w-1 h-1 rounded-full bg-stone-300 mx-0.5"></span>
-            <span className="text-emerald-700 font-semibold">15 mins delivery</span>
+            <span className="text-emerald-700 font-semibold">Local delivery</span>
           </div>
         </div>
 
         {/* Right CTA - Race test, User auth, Cart */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           {/* Subtle Race Condition test pill */}
+          {onOpenRaceTest && (
           <button
             onClick={onOpenRaceTest}
             className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-200 bg-amber-50/80 text-amber-900 text-xs font-medium hover:bg-amber-100 transition-all"
@@ -58,18 +59,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Zap className="w-3.5 h-3.5 text-amber-600" />
             <span>Anti-Oversell Demo</span>
           </button>
+          )}
 
+          {customer && <Link to="/orders" className="shrink-0 text-xs font-semibold text-nukkad-800 hover:underline">My orders</Link>}
           {/* User Account Button */}
           {customer ? (
             <div className="relative">
               <button
+                aria-label="Account menu"
                 onClick={() => setUserDropdownOpen(!userDropdownOpen)}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-stone-200 hover:border-stone-300 bg-white text-xs font-medium text-stone-800 transition-all shadow-2xs"
               >
                 <div className="w-5 h-5 rounded-full bg-nukkad-100 text-nukkad-900 flex items-center justify-center text-[10px] font-bold">
                   {customer.name.charAt(0)}
                 </div>
-                <span className="max-w-[100px] truncate">{customer.name.split(' ')[0]}</span>
+                <span className="hidden sm:inline max-w-[100px] truncate">{customer.name.split(' ')[0]}</span>
               </button>
 
               {userDropdownOpen && (
@@ -114,7 +118,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="bg-emerald-500/30 text-emerald-200 px-1.5 py-0.2 rounded-full font-mono text-[11px]">
                   {cartCount}
                 </span>
-                <span className="font-bold text-white">₹{cartTotal}</span>
+                <span className="hidden sm:inline font-bold text-white">₹{cartTotal}</span>
               </>
             )}
           </button>

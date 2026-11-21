@@ -1,24 +1,29 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { Category, Product, CartItem } from '../types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Category, Product, CartItem, Store } from '../types';
 import {
   fetchCategories,
   searchProductsApi,
   createOrderApi,
+  fetchStores,
   createEventSource
 } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { Navbar } from './Navbar';
-import { SearchBar } from './SearchBar';
+import { defaultSearchFilters, SearchBar } from './SearchBar';
 import { ProductCard } from './ProductCard';
+import { playPaymentAnimation } from './paymentAnimation';
 import { CartDrawer } from './CartDrawer';
 import { RaceBattleModal } from './RaceBattleModal';
 import { ShoppingBag, ChevronRight, Search as SearchIcon } from 'lucide-react';
 
 export const StorefrontPage: React.FC = () => {
-  const { customer } = useAuth();
+  const { customer, shopkeeper } = useAuth();
+  const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [filters, setFilters] = useState(defaultSearchFilters);
+  const searchRequest = useRef(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [products, setProducts] = useState<Product[]>([]);
   const [totalResults, setTotalResults] = useState<number>(0);
@@ -32,6 +37,11 @@ export const StorefrontPage: React.FC = () => {
   // Default store for shopper is Koramangala
   const defaultStoreId = 'store-koramangala';
 
+  const [store, setStore] = useState<Store>();
+  useEffect(() => {
+    fetchStores().then(stores => setStore(stores.find(entry => entry.id === defaultStoreId))).catch(console.error);
+  }, [defaultStoreId]);
+
   // Load categories
   useEffect(() => {
     fetchCategories()
@@ -41,23 +51,34 @@ export const StorefrontPage: React.FC = () => {
 
   // Search products
   const executeSearch = useCallback(async () => {
+    const request = ++searchRequest.current;
     setIsSearching(true);
     try {
       const data = await searchProductsApi({
         q: searchQuery,
         storeId: defaultStoreId,
-        category: selectedCategory
+        category: selectedCategory,
+        minPrice: filters.minPrice === '' ? undefined : Number(filters.minPrice),
+        maxPrice: filters.maxPrice === '' ? undefined : Number(filters.maxPrice),
+        inStockOnly: filters.inStockOnly,
+        sort: filters.sort || undefined
       });
+      if (request !== searchRequest.current) return;
       setProducts(data.hits);
       setTotalResults(data.total);
     } catch (err) {
+      if (request === searchRequest.current) {
+        setProducts([]);
+        setTotalResults(0);
+      }
       console.error('Search error:', err);
     } finally {
-      setIsSearching(false);
+      if (request === searchRequest.current) setIsSearching(false);
     }
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, filters]);
 
   useEffect(() => {
+    searchRequest.current++;
     const timer = setTimeout(() => {
       executeSearch();
     }, 200);
@@ -71,7 +92,7 @@ export const StorefrontPage: React.FC = () => {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'inventory.changed' || data.type === 'order.placed' || data.type === 'search.synced') {
+        if (data.type === 'inventory.changed' || (data.type === 'order.placed' || data.type === 'order.held') || data.type === 'search.synced') {
           executeSearch();
         }
       } catch (err) {
@@ -116,21 +137,60 @@ export const StorefrontPage: React.FC = () => {
     customerName: string;
     customerPhone: string;
     deliveryType: 'delivery' | 'pickup';
+    address?: string;
+    postalCode?: string;
   }) => {
-    const res = await createOrderApi({
-      storeId: defaultStoreId,
-      customerName: customer ? customer.name : orderData.customerName,
-      customerPhone: customer && customer.phone ? customer.phone : orderData.customerPhone,
-      deliveryType: orderData.deliveryType,
-      items: cart.map((item) => ({
-        productId: item.product.product_id,
-        quantity: item.quantity
-      }))
-    });
+    // Open during the click so browsers allow the tab before checkout finishes.
+    const paymentTab = window.open('about:blank', '_blank');
+    let bagAnimation: Animation | undefined;
+    if (paymentTab) {
+      paymentTab.opener = null;
+      paymentTab.document.title = 'Opening Razorpay';
+      const { document: paymentDocument } = paymentTab;
+      bagAnimation = playPaymentAnimation(paymentDocument.body);
+    }
 
-    handleClearCart();
-    executeSearch();
-    return { orderNumber: res.order.orderNumber };
+    try {
+      const { order } = await createOrderApi({
+        storeId: defaultStoreId,
+        ...orderData,
+        items: cart.map((item) => ({
+          productId: item.product.product_id,
+          quantity: item.quantity
+        }))
+      });
+
+      const animation = bagAnimation;
+      if (order.paymentUrl && paymentTab && !paymentTab.closed && animation) {
+        await new Promise<void>(resolve => {
+          // A closed tab cannot finish its animation. Fall back to this tab.
+          const checkTab = window.setInterval(() => {
+            if (paymentTab.closed) finish();
+          }, 100);
+          function finish() {
+            window.clearInterval(checkTab);
+            resolve();
+          }
+          animation.finished.then(finish, finish);
+        });
+      }
+
+      handleClearCart();
+      setIsCartOpen(false);
+
+      if (order.paymentUrl && paymentTab && !paymentTab.closed) {
+        paymentTab.location.replace(order.paymentUrl);
+      } else if (order.paymentUrl) {
+        window.location.assign(order.paymentUrl);
+        return;
+      } else {
+        paymentTab?.close();
+      }
+      navigate('/orders');
+    } catch (error) {
+      paymentTab?.close();
+      throw error;
+    }
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
@@ -144,11 +204,13 @@ export const StorefrontPage: React.FC = () => {
           cartCount={cartCount}
           cartTotal={cartTotal}
           onOpenCart={() => setIsCartOpen(true)}
-          onOpenRaceTest={() => setIsRaceModalOpen(true)}
+          onOpenRaceTest={shopkeeper && import.meta.env.VITE_ENABLE_DEMO_ACCOUNTS === 'true' ? () => setIsRaceModalOpen(true) : undefined}
         />
 
         {/* Clean Search & Category Filter */}
         <SearchBar
+          filters={filters}
+          setFilters={setFilters}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           categories={categories}
@@ -232,7 +294,7 @@ export const StorefrontPage: React.FC = () => {
                       {cartCount} {cartCount === 1 ? 'item' : 'items'} · ₹{cartTotal}
                     </span>
                     <span className="text-[11px] text-emerald-300/80 leading-tight">
-                      Free delivery applied
+                      Pickup or local delivery
                     </span>
                   </div>
                 </div>
@@ -247,10 +309,16 @@ export const StorefrontPage: React.FC = () => {
         )}
       </div>
 
+
       {/* Cart & Checkout Drawer */}
       <CartDrawer
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
+        key={customer?.id || 'guest'}
+        customerName={customer?.name || ''}
+        customerPhone={customer?.phone || ''}
+        signedIn={Boolean(customer)}
+        storeAddress={store?.address}
         items={cart}
         onUpdateQuantity={handleUpdateQuantity}
         onClearCart={handleClearCart}
@@ -261,11 +329,11 @@ export const StorefrontPage: React.FC = () => {
       <RaceBattleModal
         isOpen={isRaceModalOpen}
         onClose={() => setIsRaceModalOpen(false)}
-        storeId={defaultStoreId}
       />
 
       {/* Clean Minimal Footer */}
       <footer className="bg-white border-t border-stone-200 py-6 px-4 sm:px-6 mt-12 text-xs text-stone-500">
+        <Link to="/demos" className="mx-auto mb-3 block max-w-7xl text-sm text-nukkad-800 underline">Live database changes</Link>
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 font-sans">
           <div className="flex items-center gap-2">
             <span className="font-serif font-bold text-stone-900 text-sm">Nukkad</span>

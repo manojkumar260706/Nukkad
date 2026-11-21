@@ -1,8 +1,19 @@
-import React from 'react';
-import { Search, Mic, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Mic, X, SlidersHorizontal } from 'lucide-react';
 import { Category } from '../types';
 
+export interface SearchFilters {
+  minPrice: string;
+  maxPrice: string;
+  inStockOnly: boolean;
+  sort: '' | 'price-asc' | 'price-desc';
+}
+
+export const defaultSearchFilters: SearchFilters = { minPrice: '', maxPrice: '', inStockOnly: false, sort: '' };
+
 interface SearchBarProps {
+  filters: SearchFilters;
+  setFilters: (filters: SearchFilters) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   categories: Category[];
@@ -13,6 +24,8 @@ interface SearchBarProps {
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
+  filters,
+  setFilters,
   searchQuery,
   setSearchQuery,
   categories,
@@ -21,6 +34,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   isSearching,
   onSearchSubmit
 }) => {
+  const [showFilters, setShowFilters] = useState(false);
+  const [draft, setDraft] = useState(defaultSearchFilters);
+  const [draftCategory, setDraftCategory] = useState('all');
+  const filterCount = [filters.minPrice !== '', filters.maxPrice !== '', filters.inStockOnly,
+    filters.sort !== '', selectedCategory !== 'all'].filter(Boolean).length;
+
   // Voice search using Web Speech API
   const handleVoiceSearch = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -54,7 +73,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onSearchSubmit()}
-            placeholder="Search atta, rice, oil, amul milk, tea, earphones..."
+            placeholder="Try “earphones under 2k”"
             className="w-full pl-11 pr-20 py-2.5 bg-chalk border border-stone-300 rounded-xl text-stone-900 placeholder-stone-400 text-sm focus:outline-none focus:ring-2 focus:ring-nukkad-700/20 focus:border-nukkad-700 transition-all font-sans"
           />
 
@@ -77,32 +96,63 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           </div>
         </div>
 
-        {/* Clean Category Chips */}
-        <div className="flex items-center gap-2 overflow-x-auto pt-0.5 no-scrollbar">
-          <button
-            onClick={() => setSelectedCategory('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 ${
-              selectedCategory === 'all'
-                ? 'bg-nukkad-900 text-white shadow-2xs'
-                : 'bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900'
-            }`}
-          >
-            All Items
-          </button>
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 ${
-                selectedCategory === cat.id
-                  ? 'bg-nukkad-900 text-white shadow-2xs'
-                  : 'bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900'
-              }`}
-            >
-              {cat.name}
-            </button>
-          ))}
-        </div>
+        <button type="button" aria-expanded={showFilters} aria-controls="product-filters"
+          className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-semibold"
+          onClick={() => {
+            if (!showFilters) {
+              setDraft(filters);
+              setDraftCategory(selectedCategory);
+            }
+            setShowFilters(!showFilters);
+          }}>
+          <SlidersHorizontal className="h-4 w-4" /> Filters {filterCount > 0 && `(${filterCount})`}
+        </button>
+
+        {showFilters && (
+          <form id="product-filters" className="grid gap-4 rounded-xl border border-stone-200 bg-stone-50 p-4"
+            onSubmit={event => {
+              event.preventDefault();
+              setFilters(draft);
+              setSelectedCategory(draftCategory);
+              setShowFilters(false);
+            }}>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="grid gap-1 text-sm">Category
+                <select className="rounded-lg border bg-white p-2" value={draftCategory} onChange={event => setDraftCategory(event.target.value)}>
+                  <option value="all">All categories</option>
+                  {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm">Minimum price (₹)
+                <input className="min-w-0 rounded-lg border p-2" type="number" min="0" step="0.01" value={draft.minPrice}
+                  onChange={event => setDraft({ ...draft, minPrice: event.target.value })} />
+              </label>
+              <label className="grid gap-1 text-sm">Maximum price (₹)
+                <input className="min-w-0 rounded-lg border p-2" type="number" min={draft.minPrice || '0'} step="0.01" value={draft.maxPrice}
+                  onChange={event => setDraft({ ...draft, maxPrice: event.target.value })} />
+              </label>
+              <label className="grid gap-1 text-sm">Sort by
+                <select className="rounded-lg border bg-white p-2" value={draft.sort}
+                  onChange={event => setDraft({ ...draft, sort: event.target.value as SearchFilters['sort'] })}>
+                  <option value="">Recommended</option>
+                  <option value="price-asc">Price low to high</option>
+                  <option value="price-desc">Price high to low</option>
+                </select>
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={draft.inStockOnly}
+                onChange={event => setDraft({ ...draft, inStockOnly: event.target.checked })} /> In stock only
+            </label>
+            <div className="flex flex-wrap items-center gap-4">
+              <button type="submit" className="rounded-lg bg-nukkad-900 px-4 py-2 text-sm font-semibold text-white">Apply filters</button>
+              <button type="button" className="text-sm underline" onClick={() => {
+                setDraft(defaultSearchFilters);
+                setDraftCategory('all');
+              }}>Clear selection</button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

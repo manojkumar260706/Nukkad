@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -10,18 +10,42 @@ import { ensureKafkaTopics } from './kafka/client';
 import { startKafkaConsumers } from './kafka/consumers';
 import { startOutboxRelay } from './kafka/outboxRelay';
 import { searchProducts } from './opensearch/searchService';
-import { createOrderAtomic, restockProduct, setProductStock, updateOrderStatus, simulateRaceCondition } from './services/orderService';
+import { createOrderAtomic, restockProduct, setProductStock, simulateRaceCondition } from './services/orderService';
 import { registerUser, loginUser, verifyAuthToken } from './services/authService';
 import { sseManager } from './events/sse';
 
+import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
+import { migrate } from './db/migrate';
+import { runCheckoutDemo, isDemoScenario } from './services/checkoutDemo';
+import { parseCheckoutInput } from './services/checkoutInput';
+import { listCustomerOrders, reconcileCheckout, reconcilePendingCheckouts, startCheckout, updateFulfillment } from './services/checkoutService';
+
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
 app.use(express.json());
+
+function authenticate(role: 'customer' | 'shopkeeper') {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+    const user = token ? verifyAuthToken(token) : null;
+    if (!user) return res.status(401).json({ error: 'Sign in to continue.' });
+    if (user.role !== role || (role === 'shopkeeper' && !user.storeId)) {
+      return res.status(403).json({ error: 'This account cannot perform that action.' });
+    }
+    res.locals.user = user;
+    next();
+  };
+}
+
+const customer = authenticate('customer');
+const merchant = authenticate('shopkeeper');
+
 
 // 1. Health check & Aiven services status
 app.get('/api/health', async (_req: Request, res: Response) => {
@@ -48,11 +72,12 @@ app.get('/api/health', async (_req: Request, res: Response) => {
 // Auth Routes
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   try {
-    const { name, email, password, role, storeId, phone } = req.body;
+    const { name, email, password, role, phone } = req.body;
+    if (role && role !== 'customer') return res.status(403).json({ error: 'Merchant accounts are provisioned by the store administrator.' });
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are required.' });
     }
-    const result = await registerUser({ name, email, password, role, storeId, phone });
+    const result = await registerUser({ name, email, password, phone });
     res.status(201).json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -116,17 +141,24 @@ app.get('/api/products/search', async (req: Request, res: Response) => {
       minPrice,
       maxPrice,
       inStockOnly,
+      sort,
       page,
       limit
     } = req.query;
+
+    const price = z.coerce.number().finite().nonnegative().optional();
+    const filters = z.object({ minPrice: price, maxPrice: price }).safeParse({ minPrice, maxPrice });
+    if (!filters.success || (q !== undefined && typeof q !== 'string')) {
+      return res.status(400).json({ error: 'Enter valid search text and non-negative prices.' });
+    }
 
     const result = await searchProducts({
       query: q as string,
       storeId: storeId as string,
       city: city as string,
       categoryId: category as string,
-      minPrice: minPrice ? Number(minPrice) : undefined,
-      maxPrice: maxPrice ? Number(maxPrice) : undefined,
+      ...filters.data,
+      sort: sort === 'price-asc' || sort === 'price-desc' ? sort : undefined,
       inStockOnly: inStockOnly === 'true',
       page: page ? Number(page) : 1,
       limit: limit ? Number(limit) : 24
@@ -139,39 +171,54 @@ app.get('/api/products/search', async (req: Request, res: Response) => {
   }
 });
 
-// 5. Atomic Order Creation
-app.post('/api/orders', async (req: Request, res: Response) => {
+app.post('/api/orders', customer, async (req, res) => {
   try {
-    const { storeId, customerName, customerPhone, deliveryType, items } = req.body;
-    if (!storeId || !items || !Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'storeId and items array are required.' });
-    }
-
-    const order = await createOrderAtomic({
-      storeId,
-      customerName: customerName || 'Valued Shopper',
-      customerPhone: customerPhone || '+91 98765 43210',
-      deliveryType: deliveryType || 'delivery',
-      items
-    });
-
-    res.status(201).json({
-      success: true,
-      message: `Order #${order.orderNumber} placed successfully!`,
-      order
-    });
+    const order = await startCheckout(parseCheckoutInput(req.body, res.locals.user.id));
+    res.status(201).json({ order });
   } catch (err: any) {
-    console.error('Order creation error:', err.message);
-    res.status(400).json({ success: false, error: err.message });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/customer/orders', customer, async (_req, res) => {
+  try {
+    res.json(await listCustomerOrders(res.locals.user.id));
+  } catch {
+    res.status(500).json({ error: 'Could not load your orders.' });
+  }
+});
+
+app.post('/api/customer/orders/:id/payment', customer, async (req, res) => {
+  try {
+    res.json(await reconcileCheckout(req.params.id, 'customer_id', res.locals.user.id, req.body.cancel === true));
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/inventory/counter-sale', merchant, async (req, res) => {
+  const { productId, quantity } = req.body;
+  if (typeof productId !== 'string' || !Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
+    return res.status(400).json({ error: 'Enter a product and a positive whole quantity.' });
+  }
+  try {
+    const order = await createOrderAtomic({
+      storeId: res.locals.user.storeId, customerName: 'Walk-in customer', customerPhone: '',
+      deliveryType: 'counter', items: [{ productId, quantity }]
+    });
+    res.status(201).json({ order });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
   }
 });
 
 // 6. Restock Inventory
-app.post('/api/inventory/restock', async (req: Request, res: Response) => {
+app.post('/api/inventory/restock', merchant, async (req: Request, res: Response) => {
   try {
-    const { storeId, productId, quantity } = req.body;
-    if (!storeId || !productId || !quantity) {
-      return res.status(400).json({ error: 'storeId, productId, and quantity are required.' });
+    const { productId, quantity } = req.body;
+    const storeId = res.locals.user.storeId;
+    if (!productId || !Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
+      return res.status(400).json({ error: 'Enter a product and a positive whole quantity.' });
     }
 
     const result = await restockProduct(storeId, productId, Number(quantity));
@@ -182,14 +229,15 @@ app.post('/api/inventory/restock', async (req: Request, res: Response) => {
 });
 
 // 6b. Set exact product stock (Merchant control)
-app.put('/api/inventory/stock', async (req: Request, res: Response) => {
+app.put('/api/inventory/stock', merchant, async (req: Request, res: Response) => {
   try {
-    const { storeId, productId, stock } = req.body;
-    if (!storeId || !productId || stock === undefined) {
-      return res.status(400).json({ error: 'storeId, productId, and stock are required.' });
+    const { productId, stock, expectedStock } = req.body;
+    const storeId = res.locals.user.storeId;
+    if (!productId || !Number.isInteger(stock) || stock < 0 || stock > 1_000_000 || !Number.isInteger(expectedStock)) {
+      return res.status(400).json({ error: 'Enter a product and a valid whole stock count.' });
     }
 
-    const result = await setProductStock(storeId, productId, Number(stock));
+    const result = await setProductStock(storeId, productId, stock, expectedStock);
     res.json({ success: true, result });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
@@ -197,46 +245,69 @@ app.put('/api/inventory/stock', async (req: Request, res: Response) => {
 });
 
 // 6c. Update Order Status
-app.put('/api/orders/:id/status', async (req: Request, res: Response) => {
+app.put('/api/orders/:id/status', merchant, async (req: Request, res: Response) => {
   try {
     const { status } = req.body;
     if (!status) {
       return res.status(400).json({ error: 'status is required.' });
     }
-    const order = await updateOrderStatus(req.params.id, status);
-    res.json({ success: true, order });
+    await updateFulfillment(req.params.id, res.locals.user.storeId, status, req.body.pickupCode);
+    res.json({ success: true });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
 });
 
 // 6d. Get Orders list
-app.get('/api/orders', async (req: Request, res: Response) => {
+app.get('/api/orders', merchant, async (_req, res) => {
   try {
-    const storeId = req.query.storeId as string;
-    let query = 'SELECT * FROM orders';
-    const params: any[] = [];
-    if (storeId) {
-      query += ' WHERE store_id = $1';
-      params.push(storeId);
-    }
-    query += ' ORDER BY created_at DESC LIMIT 30';
-
-    const { rows } = await pool.query(query, params);
+    const { rows } = await pool.query(`
+      SELECT id, order_number, customer_name, customer_phone, delivery_type, delivery_address,
+        total_amount, status, payment_status, created_at
+      FROM orders WHERE store_id = $1 ORDER BY created_at DESC LIMIT 30
+    `, [res.locals.user.storeId]);
     res.json(rows);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
+  } catch {
+    res.status(500).json({ error: 'Could not load store orders.' });
+  }
+});
+
+app.post('/api/dashboard/demo', merchant, async (req, res) => {
+  if (process.env.ENABLE_DEMO_ACCOUNTS !== 'true') return res.sendStatus(404);
+  const scenario = req.body?.scenario;
+  if (!isDemoScenario(scenario)) return res.status(400).json({ error: 'Choose a demo scenario.' });
+  try {
+    res.json(await runCheckoutDemo(res.locals.user.storeId, res.locals.user.id, scenario));
+  } catch (error) {
+    console.error('Checkout demo failed:', error);
+    res.status(500).json({ error: 'Could not complete the database demo.' });
+  }
+});
+
+app.get('/api/dashboard/changes', merchant, async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT c.id, c.source_table, c.row_id, c.before_state, c.after_state, c.changed_at,
+        COALESCE(p.name, o.order_number, c.row_id) AS label
+      FROM store_changes c
+      LEFT JOIN products p ON c.source_table = 'store_inventory' AND p.id = c.row_id
+      LEFT JOIN orders o ON c.source_table = 'orders' AND o.id = c.row_id AND o.store_id = c.store_id
+      WHERE c.store_id = $1 ORDER BY c.id DESC LIMIT 40
+    `, [res.locals.user.storeId]);
+    res.json(rows);
+  } catch {
+    res.status(500).json({ error: 'Could not load database changes.' });
   }
 });
 
 // 7. Storekeeper Dashboard Stats
-app.get('/api/dashboard/stats', async (req: Request, res: Response) => {
-  const storeId = (req.query.storeId as string) || 'store-koramangala';
+app.get('/api/dashboard/stats', merchant, async (_req: Request, res: Response) => {
+  const storeId = res.locals.user.storeId;
 
   try {
     // Total orders count
     const ordersRes = await pool.query(
-      'SELECT COUNT(*) as count FROM orders WHERE store_id = $1',
+      'SELECT COUNT(*) as count FROM orders WHERE store_id = $1 AND created_at >= CURRENT_DATE',
       [storeId]
     );
 
@@ -269,7 +340,7 @@ app.get('/api/dashboard/stats', async (req: Request, res: Response) => {
 
     res.json({
       storeId,
-      ordersToday: parseInt(ordersRes.rows[0].count, 10) + 38, // base offset for realism matching deck slide 7
+      ordersToday: parseInt(ordersRes.rows[0].count, 10),
       lowStockCount,
       searchIndexStatus: 'In sync',
       inventory: invRes.rows,
@@ -281,12 +352,11 @@ app.get('/api/dashboard/stats', async (req: Request, res: Response) => {
 });
 
 // 8. Concurrency / Race Condition Battle Simulator
-app.post('/api/simulate-race', async (req: Request, res: Response) => {
+app.post('/api/simulate-race', merchant, async (_req: Request, res: Response) => {
+  if (process.env.ENABLE_DEMO_ACCOUNTS !== 'true') return res.sendStatus(404);
   try {
-    const storeId = (req.body.storeId as string) || 'store-koramangala';
-    const productId = (req.body.productId as string) || 'prod-race-condition-demo';
-
-    const result = await simulateRaceCondition(storeId, productId);
+    const storeId = res.locals.user.storeId;
+    const result = await simulateRaceCondition(storeId);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -300,7 +370,7 @@ app.get('/api/events/live', (req: Request, res: Response) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  const clientId = `client-${Date.now()}`;
+  const clientId = randomUUID();
   sseManager.addClient(clientId, res);
 
   req.on('close', () => {
@@ -321,6 +391,20 @@ process.on('unhandledRejection', (reason: any) => {
 async function startServer() {
   try {
     console.log('Initializing Nukkad backend services...');
+
+    await migrate();
+    let reconciling = false;
+    setInterval(async () => {
+      if (reconciling) return;
+      reconciling = true;
+      try {
+        await reconcilePendingCheckouts();
+      } catch (error) {
+        console.error('Could not reconcile payments:', error);
+      } finally {
+        reconciling = false;
+      }
+    }, 15_000);
 
     // 1. Ensure Kafka topics exist on Aiven
     await ensureKafkaTopics();

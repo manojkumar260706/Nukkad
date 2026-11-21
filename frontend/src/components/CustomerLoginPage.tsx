@@ -104,7 +104,7 @@ export const CustomerLoginPage: React.FC = () => {
       <div className="mt-4 sm:mx-auto sm:w-full sm:max-w-md px-4">
         <div className="bg-white py-8 px-6 shadow-md rounded-2xl border border-stone-200 sm:px-10 space-y-5">
           {/* Quick Demo Credentials Info Box */}
-          {!isSignUp && (
+          {!isSignUp && import.meta.env.VITE_ENABLE_DEMO_ACCOUNTS === 'true' && (
             <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80 text-xs space-y-2">
               <div className="flex items-center justify-between text-emerald-900 font-semibold">
                 <span className="flex items-center gap-1.5">

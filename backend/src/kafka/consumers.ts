@@ -37,21 +37,16 @@ export async function startKafkaConsumers() {
 
           console.log(`[Kafka Consumer] Received ${eventType} on ${topic} [P${partition}]:`, payload);
 
-          if (topic === TOPICS.ORDERS && eventType === 'order.placed') {
-            const { orderNumber, storeId, storeName, items, totalAmount } = payload;
+          if (topic === TOPICS.ORDERS && ['order.placed', 'order.held'].includes(eventType)) {
+            const { storeId, items } = payload;
 
             // 1. Broadcast order placed to UI ticker
             sseManager.broadcast({
-              type: 'order.placed',
+              type: eventType,
               topic: TOPICS.ORDERS,
-              title: 'order.placed',
-              description: `#${orderNumber} · ${storeName || 'Store'} · ₹${totalAmount}`,
-              metadata: {
-                orderNumber,
-                storeId,
-                totalAmount,
-                items
-              }
+              title: eventType,
+              description: eventType === 'order.held' ? 'Stock held for checkout' : 'Order confirmed',
+              metadata: { storeId }
             });
 
             // 2. Synchronize stock to OpenSearch for each ordered item
