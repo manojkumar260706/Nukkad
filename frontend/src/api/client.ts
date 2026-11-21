@@ -44,7 +44,7 @@ export async function searchProductsApi(params: {
   latitude?: number;
   longitude?: number;
   matchListing?: string;
-}): Promise<{ hits: Product[]; total: number; source: string }> {
+}, signal?: AbortSignal): Promise<{ hits: Product[]; total: number; source: string }> {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
   if (params.storeId) query.set('storeId', params.storeId);
@@ -63,7 +63,7 @@ export async function searchProductsApi(params: {
   }
   if (params.matchListing) query.set('matchListing', params.matchListing);
 
-  const res = await fetch(`${API_BASE}/api/products/search?${query.toString()}`);
+  const res = await fetch(`${API_BASE}/api/products/search?${query.toString()}`, { signal });
   if (!res.ok) throw new Error('Search failed');
   return res.json();
 }

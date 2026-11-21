@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Category, Product, CartItem, Store } from '../types';
 import {
   fetchCategories,
@@ -24,12 +24,13 @@ export const StorefrontPage: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [filters, setFilters] = useState(defaultSearchFilters);
-  const searchRequest = useRef(0);
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const searchRequest = useRef<AbortController>();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [submittedQuery, setSubmittedQuery] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [totalResults, setTotalResults] = useState<number>(0);
   const [page, setPage] = useState(1);
-  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [isSearching, setIsSearching] = useState(true);
 
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -64,11 +65,13 @@ export const StorefrontPage: React.FC = () => {
 
   // Search products
   const executeSearch = useCallback(async () => {
-    const request = ++searchRequest.current;
+    searchRequest.current?.abort();
+    const request = new AbortController();
+    searchRequest.current = request;
     setIsSearching(true);
     try {
       const data = await searchProductsApi({
-        q: searchQuery,
+        q: submittedQuery,
         nearest: true,
         ...location,
         page,
@@ -77,48 +80,61 @@ export const StorefrontPage: React.FC = () => {
         maxPrice: filters.maxPrice === '' ? undefined : Number(filters.maxPrice),
         inStockOnly: filters.inStockOnly,
         sort: filters.sort || undefined
-      });
-      if (request !== searchRequest.current) return;
+      }, request.signal);
+      if (request.signal.aborted) return;
       setProducts(data.hits);
       setTotalResults(data.total);
     } catch (err) {
+      if (request.signal.aborted) return;
       if (request === searchRequest.current) {
         setProducts([]);
         setTotalResults(0);
       }
       console.error('Search error:', err);
     } finally {
-      if (request === searchRequest.current) setIsSearching(false);
+      if (request === searchRequest.current && !request.signal.aborted) {
+        searchRequest.current = undefined;
+        setIsSearching(false);
+      }
     }
-  }, [searchQuery, selectedCategory, filters, location, page]);
+  }, [submittedQuery, selectedCategory, filters, location, page]);
 
   useEffect(() => {
-    searchRequest.current++;
-    const timer = setTimeout(() => {
-      executeSearch();
+    if (searchQuery.trim() === submittedQuery) return;
+    const timer = window.setTimeout(() => {
+      setPage(1);
+      setSubmittedQuery(searchQuery.trim());
     }, 200);
-    return () => clearTimeout(timer);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery, submittedQuery]);
+
+  const refreshSearch = useRef(executeSearch);
+  useEffect(() => {
+    refreshSearch.current = executeSearch;
+    void executeSearch();
+    return () => searchRequest.current?.abort();
   }, [executeSearch]);
 
-  // Live SSE listener: when an order is placed or stock is updated, live refresh product list!
   useEffect(() => {
     const eventSource = createEventSource();
-
-    eventSource.onmessage = (event) => {
+    let timer: number | undefined;
+    eventSource.onmessage = event => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'database.changed' || data.type === 'inventory.changed' || (data.type === 'order.placed' || data.type === 'order.held') || data.type === 'search.synced') {
-          executeSearch();
-        }
+        const { type } = JSON.parse(event.data);
+        if (timer !== undefined || !['database.changed', 'inventory.changed', 'order.placed', 'order.held', 'search.synced'].includes(type)) return;
+        timer = window.setTimeout(() => {
+          timer = undefined;
+          void refreshSearch.current();
+        }, 250);
       } catch (err) {
         console.error('Error processing SSE:', err);
       }
     };
-
     return () => {
+      window.clearTimeout(timer);
       eventSource.close();
     };
-  }, [executeSearch]);
+  }, []);
 
   // Cart operations
   const handleAddToCart = async (product: Product) => {
@@ -253,12 +269,18 @@ export const StorefrontPage: React.FC = () => {
           filters={filters}
           setFilters={value => { setPage(1); setFilters(value); }}
           searchQuery={searchQuery}
-          setSearchQuery={value => { setPage(1); setSearchQuery(value); }}
+          setSearchQuery={setSearchQuery}
           categories={categories}
           selectedCategory={selectedCategory}
           setSelectedCategory={value => { setPage(1); setSelectedCategory(value); }}
           isSearching={isSearching}
-          onSearchSubmit={executeSearch}
+          onSearchSubmit={() => {
+            if (searchQuery.trim() === submittedQuery) void executeSearch();
+            else {
+              setPage(1);
+              setSubmittedQuery(searchQuery.trim());
+            }
+          }}
         />
 
         <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
@@ -275,7 +297,9 @@ export const StorefrontPage: React.FC = () => {
 
         {/* Product Card Grid */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-          {products.length === 0 ? (
+          {products.length === 0 && isSearching ? (
+            <div role="status" className="grid min-h-48 place-items-center text-sm text-stone-600">Loading products…</div>
+          ) : products.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-stone-300 p-8 space-y-3">
               <SearchIcon className="w-10 h-10 text-stone-400 mx-auto stroke-1" />
               <h3 className="font-serif font-bold text-lg text-stone-800">
@@ -288,6 +312,7 @@ export const StorefrontPage: React.FC = () => {
                 onClick={() => {
                   setPage(1);
                   setSearchQuery('');
+                  setSubmittedQuery('');
                   setSelectedCategory('all');
                   setFilters(defaultSearchFilters);
                 }}
@@ -387,7 +412,6 @@ export const StorefrontPage: React.FC = () => {
 
       {/* Clean Minimal Footer */}
       <footer className="bg-white border-t border-stone-200 py-6 px-4 sm:px-6 mt-12 text-xs text-stone-500">
-        <Link to="/demos" className="mx-auto mb-3 block max-w-7xl text-sm text-nukkad-800 underline">Live database changes</Link>
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 font-sans">
           <div className="flex items-center gap-2">
             <span className="font-serif font-bold text-stone-900 text-sm">Nukkad</span>
@@ -398,14 +422,6 @@ export const StorefrontPage: React.FC = () => {
             © 2024 Nukkad Technologies Inc.
           </div>
 
-          <div>
-            <Link
-              to="/store/login"
-              className="text-stone-600 hover:text-stone-900 font-medium hover:underline text-[11px]"
-            >
-              Merchant / Storekeeper Portal
-            </Link>
-          </div>
         </div>
       </footer>
     </div>
