@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23163E2B'><rect width='24' height='24' rx='6' fill='%23163E2B'/><text x='50%' y='68%' font-size='14' font-weight='700' fill='white' text-anchor='middle' font-family='sans-serif'>N</text></svg>" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/nukkad-192.png" />
+    <meta name="theme-color" content="#163e2b" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nukkad · Every shelf, live online.</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -10,6 +13,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   </head>
   <body class="bg-chalk text-stone-900 font-sans antialiased selection:bg-nukkad-100 selection:text-nukkad-900">
+    <div id="startup" class="fixed inset-0 z-50 grid place-items-center bg-chalk text-nukkad-900" role="status">
+      <span class="font-serif text-4xl font-bold">NUKKAD</span>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -2,6 +2,16 @@ import { Store, Category, Product, DashboardStats, User } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
+async function readApiResponse<T>(response: Response, fallback: string): Promise<T> {
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data === null) {
+    throw new Error(data?.error || (response.status >= 500 || data === null
+      ? 'Could not reach the Nukkad API. Try again in a moment.'
+      : fallback));
+  }
+  return data as T;
+}
+
 export async function fetchHealth() {
   const res = await fetch(`${API_BASE}/api/health`);
   if (!res.ok) throw new Error('Health check failed');
@@ -27,81 +37,118 @@ export async function searchProductsApi(params: {
   category?: string;
   minPrice?: number;
   maxPrice?: number;
+  inStockOnly?: boolean;
+  sort?: 'price-asc' | 'price-desc';
 }): Promise<{ hits: Product[]; total: number; source: string }> {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
   if (params.storeId) query.set('storeId', params.storeId);
   if (params.city) query.set('city', params.city);
   if (params.category && params.category !== 'all') query.set('category', params.category);
-  if (params.minPrice) query.set('minPrice', String(params.minPrice));
-  if (params.maxPrice) query.set('maxPrice', String(params.maxPrice));
+  if (params.minPrice !== undefined) query.set('minPrice', String(params.minPrice));
+  if (params.maxPrice !== undefined) query.set('maxPrice', String(params.maxPrice));
+
+  if (params.inStockOnly) query.set('inStockOnly', 'true');
+  if (params.sort) query.set('sort', params.sort);
 
   const res = await fetch(`${API_BASE}/api/products/search?${query.toString()}`);
   if (!res.ok) throw new Error('Search failed');
   return res.json();
 }
 
-export async function createOrderApi(orderData: {
+type Account = 'customer' | 'shopkeeper';
+
+async function accountRequest<T>(account: Account, path: string, method = 'GET', body?: object): Promise<T> {
+  const token = localStorage.getItem(`nukkad_${account}_token`);
+  const response = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token || ''}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  return readApiResponse<T>(response, 'Request failed.');
+}
+
+export interface DatabaseChange {
+  id: string | number;
+  source_table: 'orders' | 'store_inventory';
+  row_id: string;
+  label?: string;
+  before_state: Record<string, string | number> | null;
+  after_state: Record<string, string | number>;
+  changed_at: string;
+}
+
+export function fetchDatabaseChanges() {
+  return accountRequest<DatabaseChange[]>('shopkeeper', '/api/dashboard/changes');
+}
+
+export interface DemoResult {
+  changes: DatabaseChange[];
+  results: { action: string; result: string }[];
+  snapshot: { stock: number; orders: number };
+}
+
+export function runCheckoutDemo(scenario: string) {
+  return accountRequest<DemoResult>('shopkeeper', '/api/dashboard/demo', 'POST', { scenario });
+}
+
+export interface CustomerOrder {
+  id: string;
+  orderNumber: string;
+  status: string;
+  paymentStatus: string;
+  deliveryType: 'delivery' | 'pickup';
+  total: string;
+  paymentUrl: string | null;
+  pickupCode: string | null;
+  pickupUntil: string | null;
+  holdUntil: string | null;
+  storeAddress?: string;
+  changes?: DatabaseChange[];
+}
+
+export function createOrderApi(orderData: {
   storeId: string;
   customerName: string;
   customerPhone: string;
   deliveryType: 'delivery' | 'pickup';
+  address?: string;
+  postalCode?: string;
   items: { productId: string; quantity: number }[];
 }) {
-  const res = await fetch(`${API_BASE}/api/orders`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(orderData)
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to place order');
-  return data;
+  return accountRequest<{ order: CustomerOrder }>('customer', '/api/orders', 'POST', orderData);
 }
 
-export async function fetchDashboardStats(storeId: string): Promise<DashboardStats> {
-  const res = await fetch(`${API_BASE}/api/dashboard/stats?storeId=${storeId}`);
-  if (!res.ok) throw new Error('Failed to load dashboard stats');
-  return res.json();
+export function fetchCustomerOrders() {
+  return accountRequest<CustomerOrder[]>('customer', '/api/customer/orders');
 }
 
-export async function restockProductApi(storeId: string, productId: string, quantity: number) {
-  const res = await fetch(`${API_BASE}/api/inventory/restock`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ storeId, productId, quantity })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Restock failed');
-  return data;
+export function checkPayment(id: string, cancel = false) {
+  return accountRequest<CustomerOrder>('customer', `/api/customer/orders/${id}/payment`, 'POST', { cancel });
 }
 
-export async function updateExactStockApi(storeId: string, productId: string, stock: number) {
-  const res = await fetch(`${API_BASE}/api/inventory/stock`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ storeId, productId, stock })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Update stock failed');
-  return data;
+export function fetchDashboardStats() {
+  return accountRequest<DashboardStats>('shopkeeper', '/api/dashboard/stats');
 }
 
-export async function updateOrderStatusApi(orderId: string, status: string) {
-  const res = await fetch(`${API_BASE}/api/orders/${orderId}/status`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to update order status');
-  return data;
+export function restockProductApi(productId: string, quantity: number) {
+  return accountRequest('shopkeeper', '/api/inventory/restock', 'POST', { productId, quantity });
 }
 
-export async function fetchOrdersApi(storeId?: string) {
-  const query = storeId ? `?storeId=${storeId}` : '';
-  const res = await fetch(`${API_BASE}/api/orders${query}`);
-  if (!res.ok) throw new Error('Failed to fetch orders');
-  return res.json();
+export function recordCounterSale(productId: string, quantity: number) {
+  return accountRequest('shopkeeper', '/api/inventory/counter-sale', 'POST', { productId, quantity });
+}
+
+export function updateExactStockApi(productId: string, stock: number, expectedStock: number) {
+  return accountRequest('shopkeeper', '/api/inventory/stock', 'PUT', { productId, stock, expectedStock });
+}
+
+export function updateOrderStatusApi(orderId: string, status: string, pickupCode?: string) {
+  return accountRequest('shopkeeper', `/api/orders/${orderId}/status`, 'PUT', { status, pickupCode });
+}
+
+export function fetchOrdersApi() {
+  return accountRequest<any[]>('shopkeeper', '/api/orders');
 }
 
 export async function loginApi(input: {
@@ -114,9 +161,7 @@ export async function loginApi(input: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input)
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Login failed');
-  return data;
+  return readApiResponse(res, 'Login failed');
 }
 
 export async function registerApi(input: {
@@ -132,27 +177,18 @@ export async function registerApi(input: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input)
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Registration failed');
-  return data;
+  return readApiResponse(res, 'Registration failed');
 }
 
 export async function getMeApi(token: string): Promise<{ user: User }> {
   const res = await fetch(`${API_BASE}/api/auth/me`, {
     headers: { Authorization: `Bearer ${token}` }
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to fetch user');
-  return data;
+  return readApiResponse(res, 'Failed to fetch user');
 }
 
-export async function simulateRaceApi(storeId: string) {
-  const res = await fetch(`${API_BASE}/api/simulate-race`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ storeId, productId: 'prod-race-condition-demo' })
-  });
-  return res.json();
+export function simulateRaceApi() {
+  return accountRequest<any>('shopkeeper', '/api/simulate-race', 'POST', {});
 }
 
 export function createEventSource(): EventSource {

@@ -11,6 +11,7 @@ export const CustomerLoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const demoUnavailable = error?.startsWith('The demo account is disabled.');
 
   const { loginCustomer, registerCustomer } = useAuth();
   const navigate = useNavigate();
@@ -48,8 +49,8 @@ export const CustomerLoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-chalk flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+    <div className="min-h-screen bg-chalk flex flex-col pt-6 pb-8 sm:justify-center sm:py-12 sm:px-6 lg:px-8 font-sans">
+      <div className="px-4 sm:mx-auto sm:w-full sm:max-w-md sm:px-0">
         <Link 
           to="/"
           className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-900 mb-6 font-medium transition-colors"
@@ -104,7 +105,7 @@ export const CustomerLoginPage: React.FC = () => {
       <div className="mt-4 sm:mx-auto sm:w-full sm:max-w-md px-4">
         <div className="bg-white py-8 px-6 shadow-md rounded-2xl border border-stone-200 sm:px-10 space-y-5">
           {/* Quick Demo Credentials Info Box */}
-          {!isSignUp && (
+          {!isSignUp && import.meta.env.VITE_ENABLE_DEMO_ACCOUNTS === 'true' && (
             <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80 text-xs space-y-2">
               <div className="flex items-center justify-between text-emerald-900 font-semibold">
                 <span className="flex items-center gap-1.5">
@@ -127,9 +128,19 @@ export const CustomerLoginPage: React.FC = () => {
           )}
 
           {error && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center gap-2">
+            <div role="alert" className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-              <span>{error}</span>
+              <div>
+                <p>{demoUnavailable ? 'Demo sign-in is unavailable on the hosted app. Use your own shopper account or create one.' : error}</p>
+                {demoUnavailable && (
+                  <button type="button" className="mt-2 font-semibold underline" onClick={() => {
+                    setIsSignUp(true);
+                    setEmail('');
+                    setPassword('');
+                    setError(null);
+                  }}>Create a shopper account</button>
+                )}
+              </div>
             </div>
           )}
 
@@ -165,6 +176,8 @@ export const CustomerLoginPage: React.FC = () => {
                 </div>
                 <input
                   type="email"
+                  autoComplete="username"
+                  autoCapitalize="none"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -204,6 +217,7 @@ export const CustomerLoginPage: React.FC = () => {
                 </div>
                 <input
                   type="password"
+                  autoComplete={isSignUp ? 'new-password' : 'current-password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

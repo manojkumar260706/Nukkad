@@ -1,4 +1,6 @@
+import { pool } from '../config/db';
 import { osClient } from './client';
+import { parsePriceQuery } from './searchQuery';
 import { INDEX_NAME } from './indexManager';
 
 export interface SearchParams {
@@ -9,19 +11,21 @@ export interface SearchParams {
   minPrice?: number;
   maxPrice?: number;
   inStockOnly?: boolean;
+  sort?: 'price-asc' | 'price-desc';
   page?: number;
   limit?: number;
 }
 
 export async function searchProducts(params: SearchParams) {
   const {
-    query,
+    query: rawQuery,
     storeId,
     city,
     categoryId,
     minPrice,
     maxPrice,
     inStockOnly,
+    sort,
     page = 1,
     limit = 24
   } = params;
@@ -46,13 +50,18 @@ export async function searchProducts(params: SearchParams) {
     filterClauses.push({ term: { in_stock: true } });
   }
 
-  // Price Range filter
-  if (minPrice !== undefined || maxPrice !== undefined) {
-    const range: any = {};
-    if (minPrice !== undefined) range.gte = minPrice;
-    if (maxPrice !== undefined) range.lte = maxPrice;
-    filterClauses.push({ range: { price: range } });
+  const { text: query, range } = parsePriceQuery(rawQuery || '');
+  if (minPrice !== undefined) range.gte = Math.max(range.gte ?? minPrice, minPrice);
+  if (maxPrice !== undefined) range.lte = Math.min(range.lte ?? maxPrice, maxPrice);
+  if (range.gt !== undefined && range.gte !== undefined) {
+    if (range.gt >= range.gte) delete range.gte;
+    else delete range.gt;
   }
+  if (range.lt !== undefined && range.lte !== undefined) {
+    if (range.lt <= range.lte) delete range.lte;
+    else delete range.lt;
+  }
+  if (Object.keys(range).length) filterClauses.push({ range: { price: range } });
 
   // Text search query with fuzziness & multi-field matching
   if (query && query.trim().length > 0) {
@@ -110,7 +119,9 @@ export async function searchProducts(params: SearchParams) {
           }
         },
         sort: [
-          query ? { _score: { order: 'desc' } } : { 'name.raw': { order: 'asc' } }
+          ...(sort ? [{ price: { order: sort === 'price-asc' ? 'asc' : 'desc' } }] : []),
+          ...(query ? [{ _score: { order: 'desc' } }] : []),
+          { 'name.raw': { order: 'asc' } }
         ],
         aggs: {
           categories: {
@@ -122,7 +133,19 @@ export async function searchProducts(params: SearchParams) {
       }
     });
 
-    const hits = (response.body.hits.hits || []).map((hit: any) => hit._source);
+    let hits: { product_id: string; stock: number; in_stock: boolean }[] =
+      (response.body.hits.hits || []).map((hit: any) => hit._source);
+    if (storeId && hits.length) {
+      const { rows } = await pool.query<{ product_id: string; stock: number }>(`
+        SELECT product_id, stock FROM store_inventory WHERE store_id = $1 AND product_id = ANY($2::varchar[])
+      `, [storeId, hits.map(hit => hit.product_id)]);
+      const stockByProduct = new Map(rows.map(row => [row.product_id, row.stock]));
+      hits = hits.map(hit => {
+        const stock = stockByProduct.get(hit.product_id) ?? 0;
+        return { ...hit, stock, in_stock: stock > 0 };
+      });
+      if (inStockOnly) hits = hits.filter(hit => hit.in_stock);
+    }
     const total = typeof response.body.hits.total === 'number'
       ? response.body.hits.total
       : response.body.hits.total?.value || 0;

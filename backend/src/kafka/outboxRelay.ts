@@ -45,8 +45,7 @@ export async function processOutboxBatch() {
         metadata: {
           outboxId: row.id,
           eventType: row.event_type,
-          topic: row.topic,
-          payload
+          topic: row.topic
         }
       });
     }

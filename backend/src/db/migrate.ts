@@ -114,6 +114,68 @@ export async function migrate() {
       );
     `);
 
+    await client.query(`
+      ALTER TABLE orders
+        ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50) REFERENCES users(id),
+        ADD COLUMN IF NOT EXISTS delivery_address TEXT,
+        ADD COLUMN IF NOT EXISTS payment_status VARCHAR(30) NOT NULL DEFAULT 'legacy',
+        ADD COLUMN IF NOT EXISTS payment_link_id TEXT,
+        ADD COLUMN IF NOT EXISTS payment_url TEXT,
+        ADD COLUMN IF NOT EXISTS hold_until TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS pickup_code VARCHAR(6),
+        ADD COLUMN IF NOT EXISTS pickup_until TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_orders_pending_hold ON orders(hold_until)
+        WHERE payment_status = 'awaiting_payment';
+      CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id, created_at DESC);
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS store_changes (
+        id BIGSERIAL PRIMARY KEY,
+        store_id VARCHAR(50) NOT NULL,
+        source_table TEXT NOT NULL,
+        row_id TEXT NOT NULL,
+        before_state JSONB,
+        after_state JSONB NOT NULL,
+        changed_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+      );
+      CREATE INDEX IF NOT EXISTS idx_store_changes_store ON store_changes(store_id, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_store_changes_order ON store_changes(row_id, id DESC)
+        WHERE source_table = 'orders';
+
+      CREATE OR REPLACE FUNCTION record_nukkad_store_change() RETURNS trigger LANGUAGE plpgsql AS $$
+      DECLARE
+        prior JSONB;
+        current_state JSONB;
+        tracked_row_id TEXT;
+      BEGIN
+        IF TG_TABLE_NAME = 'store_inventory' THEN
+          tracked_row_id := NEW.product_id;
+          current_state := jsonb_build_object('stock', NEW.stock);
+          IF TG_OP = 'UPDATE' THEN prior := jsonb_build_object('stock', OLD.stock); END IF;
+        ELSE
+          tracked_row_id := NEW.id;
+          current_state := jsonb_build_object('status', NEW.status, 'payment_status', NEW.payment_status);
+          IF TG_OP = 'UPDATE' THEN
+            prior := jsonb_build_object('status', OLD.status, 'payment_status', OLD.payment_status);
+          END IF;
+        END IF;
+        IF prior IS DISTINCT FROM current_state THEN
+          INSERT INTO store_changes (store_id, source_table, row_id, before_state, after_state)
+          VALUES (NEW.store_id, TG_TABLE_NAME, tracked_row_id, prior, current_state);
+        END IF;
+        RETURN NEW;
+      END;
+      $$;
+      CREATE OR REPLACE TRIGGER nukkad_inventory_changes
+        AFTER INSERT OR UPDATE OF stock ON store_inventory
+        FOR EACH ROW EXECUTE FUNCTION record_nukkad_store_change();
+      CREATE OR REPLACE TRIGGER nukkad_order_changes
+        AFTER INSERT OR UPDATE OF status, payment_status ON orders
+        FOR EACH ROW WHEN (NEW.store_id IS NOT NULL)
+        EXECUTE FUNCTION record_nukkad_store_change();
+    `);
+
     // Indexes for high performance
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_store_inventory_stock ON store_inventory(stock);

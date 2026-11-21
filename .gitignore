@@ -19,3 +19,6 @@ build/
 *.log
 .DS_Store
 .system_generated/
+
+# Generated iOS storefront bundle
+ios/Nukkad/Web/

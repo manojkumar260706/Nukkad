@@ -1,8 +1,9 @@
+import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { pool } from '../config/db';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'nukkad-hackathon-secure-jwt-secret-2024';
+const JWT_SECRET = process.env.JWT_SECRET || randomBytes(32).toString('hex');
 
 export interface UserPayload {
   id: string;
@@ -77,6 +78,12 @@ export async function loginUser(input: {
     } else {
       throw new Error('Access denied: Please use the Merchant Portal to log in.');
     }
+  }
+
+  const demoPassword = row.email === 'store@nukkad.in' ? 'store123' :
+    row.email === 'shopper@nukkad.in' ? 'shopper123' : null;
+  if (demoPassword === password && process.env.ENABLE_DEMO_ACCOUNTS !== 'true') {
+    throw new Error('The demo account is disabled. Use an individual account.');
   }
 
   const isMatch = await bcrypt.compare(password, row.password_hash);
