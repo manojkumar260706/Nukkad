@@ -16,6 +16,8 @@ Nukkad lets shoppers check what’s in stock at neighborhood stores, compare sho
 
 PostgreSQL row locks prevent online shoppers and counter sales from claiming the same last item. The backend records events in a transactional outbox and uses Kafka and OpenSearch for search synchronization. The storefront receives live updates through Server-Sent Events.
 
+**[Watch the race condition demo](https://drive.google.com/file/d/1GLget8BKAD_mgYIvyrhaKcRfIXkJz6vy/view?usp=sharing)** — Two shoppers try to buy the last loaf. One completes a test payment while the other gets an out-of-stock message.
+
 ## How it works
 
 ```mermaid
