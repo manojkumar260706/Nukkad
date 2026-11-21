@@ -237,7 +237,7 @@ export const findNearbyStores = (data: { location: string; gps?: Coordinates }) 
 export const findShoppingPlans = (data: { list: string; location: string; gps?: Coordinates }) =>
   postJson<{ stores: NearbyStore[]; unmatched: ShoppingItem[]; singles: ShoppingPlan[]; split: ShoppingPlan | null }>('/api/shopping-plan', data);
 export const askShoppingAssistant = (data: { message: string; language: string; previous: ShoppingItem[]; lastTurn?: { request: string; reply: string }; location: string; gps?: Coordinates }) =>
-  accountRequest<{ items: ShoppingItem[]; question: string; plans: Awaited<ReturnType<typeof findShoppingPlans>> | null }>(
+  accountRequest<{ items: ShoppingItem[]; question: string; replyText: string; replyLanguage: string; plans: Awaited<ReturnType<typeof findShoppingPlans>> | null }>(
     'customer', '/api/customer/shopping-assistant', 'POST', data
   );
 export const reserveBaskets = (requestKey: string, baskets: PickupBasket[]) =>

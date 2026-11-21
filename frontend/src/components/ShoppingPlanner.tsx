@@ -52,7 +52,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
   });
   const [language, setLanguage] = useState('auto');
   const [assistantItems, setAssistantItems] = useState<ShoppingItem[]>([]);
-  const [chat, setChat] = useState<{ request: string; reply: string }[]>([]);
+  const [chat, setChat] = useState<{ request: string; reply: string; language: string }[]>([]);
   const [selectedBasket, setSelectedBasket] = useState<PickupBasket>();
   const [phone, setPhone] = useState('');
   const [paid, setPaid] = useState<string[]>([]);
@@ -95,9 +95,7 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
     setBusy(true);
     try {
       const reply = await askShoppingAssistant({ message, language, previous: assistantItems, lastTurn: chat[chat.length - 1], location, gps });
-      const parsed = reply.items.map(item => `${item.quantity} ${item.name}`).join(', ');
-      setChat(current => [...current, { request: message, reply: reply.question || (parsed
-        ? `Shopping list: ${parsed}` : 'Tell me which products you want to buy.') }]);
+      setChat(current => [...current, { request: message, reply: reply.replyText, language: reply.replyLanguage }]);
       setAssistantItems(reply.items);
       setMessage('');
       setSelectedBasket(undefined);
@@ -280,8 +278,8 @@ export function ShoppingPlanner({ cartVisible, cartOpen, storefrontLocation, loc
           {chat.map((turn, index) => <div key={index} className="space-y-2">
             <p className="ml-auto max-w-[88%] w-fit break-words rounded-2xl rounded-tr-sm bg-nukkad-900 px-4 py-3 text-sm leading-relaxed text-white">{turn.request}</p>
             <div className="mr-7 w-fit max-w-full break-words rounded-2xl rounded-tl-sm border border-stone-200 bg-white px-4 py-3 text-sm leading-relaxed text-stone-800">
-              <p>{turn.reply}</p>
-              {speech.canSpeak && <button type="button" onClick={() => speech.toggleReadAloud(index, turn.reply)}
+              <p lang={turn.language}>{turn.reply}</p>
+              {speech.canSpeak && <button type="button" onClick={() => speech.toggleReadAloud(index, turn.reply, turn.language)}
                 disabled={speech.listening} className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-nukkad-800 disabled:opacity-50">
                 <Volume2 size={15} aria-hidden="true" /> {speech.speaking === index ? 'Stop reading' : 'Read aloud'}
               </button>}

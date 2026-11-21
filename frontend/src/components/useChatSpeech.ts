@@ -75,7 +75,7 @@ export function useChatSpeech(appendTranscript: (text: string) => void) {
     }
   }
 
-  function toggleReadAloud(index: number, text: string) {
+  function toggleReadAloud(index: number, text: string, language: string) {
     if (!canSpeak) return;
     if (utterance.current) {
       utterance.current = undefined;
@@ -85,7 +85,7 @@ export function useChatSpeech(appendTranscript: (text: string) => void) {
     if (speaking === index) return;
 
     const next = new SpeechSynthesisUtterance(text);
-    next.lang = 'en-IN';
+    next.lang = language;
     next.onend = () => {
       if (utterance.current !== next) return;
       utterance.current = undefined;
