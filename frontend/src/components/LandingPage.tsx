@@ -1,7 +1,24 @@
-import { type MouseEvent, useRef, useState } from 'react';
+import { type CSSProperties, type MouseEvent, useRef, useState } from 'react';
 import { ArrowRight, MessageCircle } from 'lucide-react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+
+function RevealText({ text, delay = 0 }: { text: string; delay?: number }) {
+  let index = 0;
+  return <span aria-hidden="true">
+    {text.split(' ').map((word, wordIndex) => (
+      <span key={wordIndex}>
+        {wordIndex > 0 && ' '}
+        <span className="inline-block whitespace-nowrap">
+          {Array.from(word, (letter, letterIndex) => (
+            <span key={letterIndex} className="landing-letter"
+              style={{ '--letter-delay': `${delay + index++ * 24}ms` } as CSSProperties}>{letter}</span>
+          ))}
+        </span>
+      </span>
+    ))}
+  </span>;
+}
 
 export function LandingPage() {
   const [params] = useSearchParams();
@@ -42,8 +59,8 @@ export function LandingPage() {
       window.scrollTo(0, 0);
       navigate('/shop', { flushSync: true });
       overlay.classList.add('market-transition-exit');
-      window.setTimeout(() => overlay.remove(), 320);
-    }, 1100);
+      window.setTimeout(() => overlay.remove(), 650);
+    }, 300);
   }
   if (params.get('chat') === 'open') return <Navigate to="/shop?chat=open" replace />;
 
@@ -67,9 +84,9 @@ export function LandingPage() {
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-5 pb-6 pt-4 sm:px-8 lg:pt-0">
         <section className="grid flex-1 items-center content-center gap-8 py-6 lg:grid-cols-2 lg:gap-12">
           <div className="py-3 text-center lg:text-left">
-            <h1 className="mx-auto max-w-xl font-serif lg:mx-0 text-[clamp(3.25rem,7vw,6.2rem)] font-medium leading-[0.94] tracking-[-0.05em]">
-              <span className="landing-reveal block">Your everyday shop,</span>
-              <em className="landing-reveal landing-reveal-title block font-normal text-nukkad-700">around the corner.</em>
+            <h1 aria-label="Your everyday shop, around the corner." className="mx-auto max-w-xl font-serif lg:mx-0 text-[clamp(3.25rem,7vw,6.2rem)] font-medium leading-[0.94] tracking-[-0.05em]">
+              <span className="block"><RevealText text="Your everyday shop," /></span>
+              <em className="block font-normal text-nukkad-700"><RevealText text="around the corner." delay={410} /></em>
             </h1>
             <p className="landing-reveal landing-reveal-copy mx-auto mt-5 max-w-md lg:mx-0 text-base leading-relaxed text-stone-700 sm:text-lg">
               See what’s in stock at neighborhood stores, compare baskets, and order for pickup or local delivery where available.

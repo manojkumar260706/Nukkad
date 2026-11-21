@@ -48,20 +48,27 @@
   inset: 0;
   z-index: 100;
   overflow: hidden;
-  background-color: #f8f5ed;
-  animation: market-backdrop 1100ms ease both;
+  isolation: isolate;
+  transition: opacity 620ms cubic-bezier(.4,0,.2,1);
+}
+
+.market-transition::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: '';
+  animation: market-backdrop 920ms ease both;
 }
 
 .market-transition img {
   position: absolute;
   max-width: none;
   object-fit: cover;
-  animation: market-zoom 1100ms cubic-bezier(.46,.02,.2,1) both;
+  animation: market-zoom 920ms cubic-bezier(.46,.02,.2,1) both;
 }
 
 .market-transition.market-transition-exit {
-  background-color: #f8f5ed;
-  animation: market-dismiss 300ms ease-out both;
+  opacity: 0;
   pointer-events: none;
 }
 
@@ -73,11 +80,6 @@
 @keyframes market-zoom {
   from { transform: none; border-radius: 2rem; }
   to { transform: var(--market-zoom); border-radius: 0; }
-}
-
-@keyframes market-dismiss {
-  from { opacity: 1; }
-  to { opacity: 0; }
 }
 
 @keyframes landing-reveal {
@@ -96,11 +98,15 @@
 }
 
 .landing-reveal { animation: landing-reveal 780ms cubic-bezier(.22,.61,.36,1) both; }
-.landing-reveal-title { animation-delay: 220ms; }
-.landing-reveal-copy { animation-delay: 420ms; }
-.landing-reveal-actions { animation-delay: 560ms; }
+.landing-letter {
+  display: inline-block;
+  animation: landing-fade 430ms ease-out var(--letter-delay) both;
+}
+.landing-reveal-copy { animation-delay: 740ms; }
+.landing-reveal-actions { animation-delay: 880ms; }
 .landing-photo { animation: landing-photo 650ms ease-out both; }
 
 @media (prefers-reduced-motion: reduce) {
   .landing-reveal, .landing-photo { animation-name: landing-fade; animation-duration: 420ms; }
+  .landing-letter { animation-delay: 0ms; }
 }
