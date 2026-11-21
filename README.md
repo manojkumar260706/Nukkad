@@ -1,205 +1,186 @@
-# Nukkad - Real-Time Retail Storefront
+# Nukkad
 
-A real-time online retail platform built on Aiven for PostgreSQL, Apache Kafka, and OpenSearch.
+**A neighborhood storefront with live inventory, multilingual basket planning, and store-level order fulfilment.**
 
-Theme: Retail & E-commerce: Build the Online Store  
-Team: LastMinute | College: Atria Institute of Technology
+[Browse Nukkad](https://nukkadshop.vercel.app/) · [Backend health](https://nukkad-backend-qeof.onrender.com/api/health)
 
----
+![Illustration of a neighborhood grocery shop with produce at the entrance](frontend/public/nukkad-shopfront.jpg)
 
-## Architecture Overview
+Nukkad brings the physical shelf and the online shop together. A merchant can record an in-store sale while a shopper is checking out, and both operations use the same inventory record. Shoppers can also describe an entire shopping list in chat, see how much nearby shops can fulfil, and choose between a single shop and a split pickup.
 
-Nukkad addresses catalogue and physical shelf drift by connecting customer orders, inventory updates, and product search via an event-driven architecture.
+## Shopper experience
 
-1. **Anti-Oversell Guarantee:** PostgreSQL row-level locks (`SELECT ... FOR UPDATE`) ensure two customers cannot purchase the last physical unit.
-2. **Transactional Outbox Pattern:** Stock holds, counter sales, payment confirmations and stock releases persist their events in the same transaction as their database changes.
-3. **Event Streaming:** Apache Kafka streams `order.held`, `order.placed` and `inventory.restocked` events to asynchronous consumer workers.
-4. **Search Synchronization:** OpenSearch indexes products with fuzzy matching and Indian retail synonym analysis, filtered by physical store availability.
-5. **Separated Merchant Console:** A dedicated store manager portal provides real-time stock overrides, order status dispatch, and event logging.
+### Browse and search
 
+- **Live catalogue.** Product cards show the selling store, unit size, price, and available quantity. The catalogue covers groceries, produce, pantry staples, snacks, and electronics. Merchants can set their own price, name, unit, and stock for a listing.
+- **Natural-language filters.** Try `earphones under 2k` or `rice at most ₹500`. Category, minimum and maximum price, in-stock filtering, and price sorting combine with the search text.
+- **Nearby listings.** When location is available, the storefront prioritizes nearby in-stock listings. Without location, it can still show listings from across the catalogue.
+- **Single-store cart.** An ordinary checkout belongs to one store. If an item is offered by another shop, Nukkad looks for an equivalent listing at the cart’s store and shows the actual price there. If there’s no match, the existing cart stays intact.
+
+### Nukkad Assistant and basket comparison
+
+Open the chat bubble on the storefront or select **Ask Nukkad** on the landing page. Sign in as a shopper and send a request such as `2 milk and bread`. Follow up with a change such as `make that 3 milk` to revise the list.
+
+1. **Understand the request.** Gemini extracts quantities and product names in a structured format. The backend validates the response before sending it to the planner.
+2. **Support regional languages.** The assistant supports English, Hindi, Kannada, Tamil, Telugu, and Malayalam, plus automatic language detection. Sarvam AI translates supported non-English requests for catalogue matching and translates replies back. Voice input and **Read aloud** use the speech features available on the device or browser.
+3. **Choose a location.** Use GPS, type a locality, city, address or PIN, or select a suggested area. The current clients can open the location picker after the shopper taps **Send**. If there are no nearby matches, the shopper can try another location without retyping the list. GPS searches active stores within 10 km using straight-line distance. A typed location can use a matching store’s coordinates as an approximate starting point. Distances are shown when available.
+4. **Compare actual baskets.** PostgreSQL supplies current listings, prices and available stock. Each result lists the shop, items, quantities, subtotal, available distance estimate, and missing items. A complete multi-store option appears when the planner finds one.
+
+The planner evaluates single-store baskets and complete splits across two or three shops, using up to 12 eligible stores for split candidates. It ranks by fewer missing item types, then more units filled, then score. The score adds ₹8 per known straight-line kilometre and ₹25 per additional stop to the basket price. These weights only affect ranking. The displayed basket subtotal is what the products cost.
+
+### Checkout, payment and fulfilment
+
+| Option | What happens |
+| --- | --- |
+| **Buy now** | The backend checks current stock and, for a planned basket, the quoted price before holding inventory and creating a hosted Razorpay Test Mode payment link. A split basket checks out one store at a time. |
+| **Reserve for pickup** | The shopper can reserve a single-store or split basket and pay at collection. A split reservation creates a separate order per store in one database transaction. A stock or price conflict rolls back the full reservation, and repeating the same request key prevents duplicate orders. |
+| **Local delivery** | The regular cart supports delivery to the selected store’s service PIN and adds a ₹30 delivery fee in the current implementation. Availability depends on the store. |
+
+- **Online payment:** Unpaid Razorpay holds last 20 minutes. Shoppers can resume, check, or cancel an eligible payment from **My orders**. The backend polls for payment and checks the gateway before releasing a hold. An eligible cancellation or expiry restores stock once.
+- **Pickup:** A merchant can accept a pay-at-pickup request, mark it ready, and collect it using the shopper’s six-digit code. Paid online pickup also supports preparation and collection with a code, and shows a two-hour pickup window when marked ready.
+- **Delivery:** The merchant can mark a paid order **Preparing**, **Out for delivery**, and **Delivered**. Eligible merchant cancellation of a paid order can restore stock and mark the payment **Refund pending** for manual handling.
+- **Order tracking:** **My orders** shows the shopper’s own orders, payment and fulfilment state, and applicable pickup instructions. Customer and merchant views refresh after server-side changes.
+
+## Merchant console
+
+Shoppers and shopkeepers use separate sign-in flows. A merchant can register a store with its location and PIN. Merchant operations are scoped to the signed-in merchant’s store, and customers only receive access to their own orders.
+
+| Area | What merchants can do |
+| --- | --- |
+| **Shelf stock** | See listing quantities and low-stock indicators, restock inventory, and correct shelf counts. |
+| **Manage listings** | Add a product or reuse a catalogue entry, set its store-specific name, unit, price and quantity, and list or unlist it. Unlisting preserves existing reservations and history. |
+| **Counter sales** | Record a physical sale against the same available stock used by online checkout and reservations. |
+| **Incoming orders** | Accept or reject reservation requests, prepare orders, validate pickup codes and update delivery status. |
+| **Database changes** | Inspect committed inventory and order changes with before/after values. Private checkout demos exercise the same services with dedicated inventory and simulated payments. |
+
+## How it works
+
+```mermaid
+flowchart LR
+    Clients["Web storefront and iPhone app"] --> API["Express API"]
+    API --> PG["PostgreSQL"]
+    API --> AI["Gemini and Sarvam AI"]
+    API --> Pay["Razorpay Test Mode"]
+    PG --> Relay["Transactional outbox relay"]
+    Relay --> Kafka["Kafka"]
+    Kafka --> Search["OpenSearch"]
+    Search --> API
+    PG --> SSE["Server-Sent Events"]
+    SSE --> Clients
 ```
-+-------------------------------------------------------------+
-|                      NUKKAD FRONTEND                        |
-|   - Customer Storefront (/)   - Merchant Console (/store)   |
-+------------------------------+------------------------------+
-                               | HTTP REST / SSE Stream
-                               v
-+-------------------------------------------------------------+
-|                     Node.js / Express                       |
-|                          REST API                           |
-+--------------+-------------------------------+--------------+
-               |                               |
-               | (1) Atomic Transaction        | (Search)
-               v                               v
-+------------------------------+ +----------------------------+
-|     Aiven for PostgreSQL     | |     Aiven for OpenSearch   |
-|   - Orders & Order Items     | |   - Fuzzy & Synonym Search |
-|   - Inventory & Stores       | |   - Store-level filtering  |
-|   - Users (Bcrypt Auth)      | +----------------------------+
-|   - Transactional Outbox     |               ^
-+--------------+---------------+               |
-               |                               |
-               | (2) Outbox Relay              | (4) Sync
-               v                               |
-+----------------------------------------------+--------------+
-|                   Aiven for Apache Kafka                    |
-|          Topics: store.orders | store.inventory             |
-+--------------+-------------------------------+--------------+
-               | (3) Consume                   | (3) Consume
-               v                               v
-+------------------------------+ +----------------------------+
-|  Consumer: Inventory Alerts  | |   Consumer: Search Sync    |
-+------------------------------+ +----------------------------+
-```
 
----
+- **PostgreSQL is the source of truth.** Online holds, pickup reservations, and counter sales lock the same inventory rows using `SELECT ... FOR UPDATE`. If two orders compete for the last unit, the first successful transaction claims it. The second sees the updated stock.
+- **The transactional outbox ties events to committed writes.** Stock and order changes insert outbox records in the same transaction. The relay publishes them to Kafka topics such as `store.orders` and `store.inventory` for asynchronous processing, including search synchronization.
+- **Search combines current inventory with optional typo matching.** PostgreSQL applies listing, stock, price and category constraints. OpenSearch can supply fuzzy product candidates when an exact search doesn’t match.
+- **Live updates reach clients via SSE.** PostgreSQL notifications support stock and order refreshes even when Kafka and OpenSearch are disabled for local development.
+- **The iPhone app bundles the storefront.** SwiftUI and WKWebView host the React bundle. The app uses native iOS location for the assistant and calls the HTTPS backend for inventory, accounts, orders and payments.
 
-## Infrastructure and Technologies
+**Stack** · React, TypeScript, Vite, Tailwind CSS, Node.js, Express, PostgreSQL, KafkaJS, Apache Kafka, OpenSearch, SwiftUI and WKWebView. The public web build is on Vercel, the API is on Render, and the data services use Aiven.
 
-| Component | Technology | Implementation Details |
-|---|---|---|
-| Database | Aiven for PostgreSQL 18.7 | ACID transactions, row-level locks, transactional outbox table, bcrypt credential storage. |
-| Streaming | Aiven for Apache Kafka | SASL SCRAM-SHA-256 with SSL CA validation. Topics: `store.orders`, `store.inventory`. |
-| Search | Aiven for OpenSearch 3.6.0 | Typo tolerance (`fuzziness: AUTO`), synonym analyzer (`atta`, `gehu`, `chawal`, `toor dal`, `bluetoth`). |
-| Backend | Node.js, Express, TypeScript | REST endpoints, outbox polling relay, KafkaJS consumer group, Server-Sent Events (SSE). |
-| Frontend | React 18, Vite, TypeScript, Tailwind CSS | Client-side routing with separate customer and merchant portals, live stock indicators. |
+## Run locally
 
----
+Use Node.js 20 or newer with npm. You’ll also need a PostgreSQL database. From the repository root:
 
-## Routing and Endpoints
-
-### Frontend Routes
-- `/`: Customer storefront (search, product catalogue, cart, checkout).
-- `/login`: Customer sign in and account registration.
-- `/store/login`: Store manager and merchant authentication.
-- `/store/dashboard`: Merchant console (stock adjustments, order status, event feed).
-
-### Core API Endpoints
-- `GET /api/health`: Health status of PostgreSQL, Kafka, and OpenSearch.
-- `GET /api/products/search`: Search products via OpenSearch with fuzzy matching and filters.
-- `POST /api/orders`: Authenticated checkout, atomic stock hold, and Razorpay Test Mode link.
-- `GET /api/customer/orders`: Orders and fulfilment status for the signed-in customer.
-- `POST /api/customer/orders/:id/payment`: Verify payment status or cancel an unpaid checkout.
-- `POST /api/inventory/counter-sale`: Store-scoped counter sale against the same stock as online checkout.
-- `PUT /api/inventory/stock`: Direct inventory count override by storekeeper.
-- `PUT /api/orders/:id/status`: Update order dispatch state.
-- `POST /api/auth/register`: Customer account registration.
-- `POST /api/auth/login`: User login with role enforcement.
-- `POST /api/simulate-race`: Private, merchant-only counter sale versus online checkout simulation.
-- `GET /api/events/live`: Server-Sent Events stream for real-time Kafka event display.
-
----
-
-## Local Development
-
-### Prerequisites
-- Node.js (version 20 or higher) and npm
-- Aiven service credentials (configured in `backend/.env`)
-
-### 1. Backend Service
 ```bash
-cd backend
-npm install
-npm run dev
+npm ci --prefix backend
+npm ci --prefix frontend
+cp -n backend/.env.example backend/.env
 ```
-The API server starts on `http://localhost:5001`.
 
-### 2. Frontend Application
+Edit `backend/.env` using [the example configuration](backend/.env.example). The copy command preserves an existing file.
+
+| Configuration | Needed for |
+| --- | --- |
+| `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, `PG_DATABASE`, `PG_SSL` | Core accounts, inventory, orders and planning. For a local PostgreSQL server without TLS, use `PG_SSL=false`. |
+| `JWT_SECRET` | Set a unique secret for shared or hosted deployments. |
+| `KAFKA_ENABLED`, `OPENSEARCH_ENABLED` | Aiven streaming and fuzzy search. Set both to `false` for a PostgreSQL-only setup. When enabled, supply the corresponding broker, TLS and search credentials. |
+| `GEMINI_API_KEY`, `GEMINI_MODEL`, `SARVAM_API_KEY` | Assistant conversation and translation. English mode uses Gemini directly. Automatic detection and other language modes also use Sarvam. |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Online checkout via hosted Razorpay **Test Mode** links. Pay-at-pickup reservations work independently of the gateway. |
+| `ENABLE_DEMO_ACCOUNTS`, `VITE_ENABLE_DEMO_ACCOUNTS` | Optional seeded logins and demo controls on a private demo database only. Set the former in the backend environment and the latter in the frontend environment. |
+
+Start the backend before seeding so it can apply its migrations.
+
 ```bash
-cd frontend
-npm install
-npm run dev
+# Terminal 1
+npm run dev --prefix backend
+
+# Terminal 2, optional, after the backend is ready
+npm run seed --prefix backend
+
+# Terminal 3
+npm run dev --prefix frontend
 ```
-The client application starts on `http://localhost:3000`.
 
----
+Open the URL printed by Vite, usually `http://localhost:3000`. The development frontend proxies API requests to `http://localhost:5001`. Seed only a disposable or private demo database, since the seed command populates sample accounts, products and stock.
 
-## Deployment Configuration
+## Run the iPhone app
 
-### Frontend (e.g., Vercel, Netlify)
-1. Set repository root to `frontend`.
-2. Configure build command: `npm run build`
-3. Configure output directory: `dist`
-4. Set environment variable: `VITE_API_BASE_URL` pointing to the deployed backend URL.
+1. From the repository root, install the frontend packages and build the bundled storefront.
 
-### Backend (e.g., Render, Railway)
-1. Set repository root to `backend`.
-2. Configure build command: `npm install && npm run build`
-3. Configure start command: `npm start`
-4. Set required environment variables from `backend/.env.example`.
+   ```bash
+   npm ci --prefix frontend
+   sh ios/build-storefront.sh
+   open ios/Nukkad.xcodeproj
+   ```
 
----
+2. In Xcode, choose your Apple development team under **Signing & Capabilities**.
+3. Select your iPhone as the run destination and press **Run**. Use **Allow While Using App** if you want to use GPS. You can also pick an area manually.
+4. Rebuild the bundle and rerun the app when changing the frontend. To target a different backend, run `NUKKAD_API_URL=https://your-api.example.com sh ios/build-storefront.sh`. The default is the live Render backend. The iPhone app uses its bundled web assets and needs network access for API calls.
 
-## Demo Credentials
+## Deployment
 
-For evaluation and demonstration purposes:
+| Service | Configuration |
+| --- | --- |
+| **Vercel** | [Live storefront](https://nukkadshop.vercel.app/). The current deployment was uploaded as a built `dist` bundle. To update it, build with `VITE_API_BASE_URL` set to the HTTPS API and upload the new bundle with the SPA rewrite from [frontend/vercel.json](frontend/vercel.json). For a Git-connected deployment, set the root directory to `frontend`, build command to `npm run build`, and output directory to `dist`. |
+| **Render** | [Live API health](https://nukkad-backend-qeof.onrender.com/api/health). The current service tracks `updates`. Use root directory `backend`, build command `npm ci --include=dev && npm run build`, and start command `npm start`. Configure database, payment and assistant secrets in Render’s backend environment. |
+| **Aiven** | Hosts PostgreSQL, Kafka and OpenSearch. Keep credentials and certificates in the backend environment. |
 
-For a private demo with the demo flags enabled:
+Leave demo-account flags off on public deployments. Keep Gemini, Sarvam, Razorpay and database secrets on the server. Vercel only needs the public API base URL.
 
-- **Customer Account:** `shopper@nukkad.in` / `shopper123`
-- **Storekeeper Account:** `store@nukkad.in` / `store123`
+## Demo walkthrough
 
-Both login views feature a single-click auto-fill option for testing.
+### Split pickup
 
-## Checkout and fulfilment demo
+1. Register two merchants in **Demo Lane, Bengaluru**, PIN **560095**. Use **Milk Shop** and **Bread Shop** with demo coordinates **12.93, 77.62**.
+2. Add **2 cartons of milk at ₹40 each** to Milk Shop and **1 loaf of bread at ₹30** to Bread Shop.
+3. Sign in as a shopper. Ask Nukkad for `2 milk and bread`, pick **Demo Lane**, and compare. Each single store has a missing item. The complete split totals **₹110**.
+4. Reserve the split for pickup. Accept, mark ready, and collect the milk order with its pickup code. Reject or cancel the bread order to see its quantity restored once.
+5. Repeat with **Buy now** and Razorpay Test Mode to demonstrate one-store-at-a-time online payment.
 
-1. Configure the database, Kafka and OpenSearch in `backend/.env`. Start with the seeded catalogue and merchant account on a demo database. The server applies the additive order migration on startup.
-2. Set `RAZORPAY_KEY_ID` to a Razorpay Test Mode key ID and `RAZORPAY_KEY_SECRET` to its secret in the backend environment. Use `npm run dev` in both projects. Test Mode uses hosted Payment Links and does not move money.
-3. For a private demo database, set `ENABLE_DEMO_ACCOUNTS=true` in `backend/.env` and `VITE_ENABLE_DEMO_ACCOUNTS=true` in `frontend/.env` to use the seeded customer and merchant accounts. Use private accounts and a unique `JWT_SECRET` on a shared deployment. Merchant accounts are provisioned by the administrator.
-4. Sign in as a shopper. Choose pickup or local delivery. The demo serves the shop's own PIN code and adds ₹30 for delivery. Select **Continue to payment** to open Razorpay directly. After paying, return to **My orders** and select **Check payment** or wait for the next refresh.
-5. In the merchant dashboard, use **Record counter sale** to sell one unit at the counter. To demo the last unit, set available stock to one and attempt to reserve and record the counter sale in separate tabs. Either path uses PostgreSQL's same locked stock row.
-6. A paid pickup moves through **Preparing**, **Ready for pickup**, and **Collected**. The customer sees a two-hour collection window once the order is ready and presents their six-digit code to the merchant. Paid delivery moves through **Preparing**, **Out for delivery**, and **Delivered**.
-7. Unpaid checkouts have a 20-minute hold. Cancel in **My orders** to test stock release without waiting. The backend checks Razorpay before releasing a payment hold. Merchant cancellation of a confirmed paid order restores stock and marks the payment **Refund pending** for manual handling.
+### Last-unit race
 
-The backend polls Razorpay while checkout is pending. Verify payment, cancellation, and stock release with your Test Mode account before the demo.
+1. Set a listed test item’s available stock to **1** in a private demo store.
+2. Have two shopper accounts attempt the same reservation, or race one shopper checkout against a counter sale.
+3. One succeeds. The other receives a stock conflict. Inspect the committed inventory change in the merchant dashboard.
 
-## Checkout demos and filtered search
+## Routes and API
 
-Open **Database changes** in the merchant dashboard to see committed PostgreSQL changes from real actions. Customer order cards include **Database history**. Each entry shows the row and its before/after values. Entries start when the migration is applied. With both private demo flags enabled, **Run a checkout demo** exercises the checkout services on dedicated inventory and shows the committed rows. The demo uses simulated gateway responses and does not contact Razorpay.
+| Screen | Route |
+| --- | --- |
+| Landing page | `/` |
+| Storefront and assistant | `/shop` and `/shop?chat=open` |
+| Shopper sign-in and registration | `/login` |
+| My orders | `/orders` |
+| Merchant sign-in and registration | `/store/login` and `/store/signup` |
+| Merchant dashboard | `/store/dashboard` |
 
-Storefront search accepts phrases such as `earphones under 2k` and `rice at most ₹500`. Search uses the current catalogue. The manual price bounds, category, stock availability and price sort combine with the typed query.
+| API | Purpose |
+| --- | --- |
+| `GET /api/products/search`, `GET /api/categories`, `POST /api/stores/nearby` | Browse products, filter the catalogue, and find nearby stores. |
+| `POST /api/customer/shopping-assistant`, `POST /api/shopping-plan` | Interpret a chat request or calculate a basket comparison from a list. |
+| `POST /api/orders`, `POST /api/customer/pickup-reservations` | Create an online checkout or reserve pickup baskets. |
+| `GET /api/customer/orders`, `POST /api/customer/orders/:id/payment` | Read a shopper’s orders, verify payment or cancel an unpaid checkout. |
+| `POST /api/inventory/listings`, `PUT /api/inventory/listings/:id`, `POST /api/inventory/counter-sale` | Manage merchant listings and record a physical sale. |
+| `PUT /api/orders/:id/status`, `GET /api/dashboard/changes` | Update fulfilment and inspect committed changes. |
+| `GET /api/health`, `GET /api/events/live` | Check the service and subscribe to live events. |
 
-### Three-device last-item demo
+## Tests
 
-Deploy the Vite frontend on Vercel using the `frontend` directory. Deploy the long-running backend separately and set `VITE_API_BASE_URL` in Vercel to its HTTPS origin. Configure the backend with the same Aiven services used by the merchant dashboard and Razorpay Test Mode keys. Keep the seeded-demo account flags off on a public deployment. Use individual accounts and a private demo store or database.
+```bash
+npm --prefix backend test
+npm --prefix frontend run build
+```
 
-1. Build and run the Xcode app on your phone with the same backend URL. See the iPhone app setup below.
-2. On a second laptop, sign in to the same deployed site as another shopper. Add the same test product to both carts.
-3. On the merchant laptop, select the same store, set the available stock of that product to 1, and open **Database changes**. Use a product with no outstanding holds.
-4. Both shoppers tap **Continue to payment**. The backend locks the same inventory row. The winner receives a Razorpay link and the other shopper sees **Out of stock**. Complete the winning test payment. The merchant feed shows **Available stock 1 → 0** and then **Payment status → Paid**.
+Set `TEST_DATABASE_URL` to a local PostgreSQL database before running the backend tests to include the database integration suite. The test user needs permission to create a schema. The suite checks pickup lifecycle, last-unit contention, split rollback, idempotency and order ownership. Assistant tests mock Gemini and Sarvam. Use a configured deployment to verify live provider calls and Razorpay Test Mode.
 
-### iPhone app setup
-
-1. From the repository root, run `npm ci --prefix frontend`, then `sh ios/build-storefront.sh`.
-2. Open `ios/Nukkad.xcodeproj` in Xcode.
-3. In **Signing & Capabilities**, select your Apple development team. Select your iPhone as the run destination and press **Run**.
-
-The script bundles the storefront in the app and points it at the live Render API. To use a different backend, run `NUKKAD_API_URL=https://your-api.example.com sh ios/build-storefront.sh`. Vercel is optional. Rebuild the bundle and reinstall the app after frontend changes. The app still needs internet access for the API and Razorpay.
-
-### Shopping-list pickup
-
-The shopper can open the **Nukkad Assistant** message bubble, use GPS or type a locality, city, address or PIN, and compare baskets. GPS uses active stores within 10 km of the reported point. A typed match uses a matching store with coordinates as an approximate starting point when available. Without a known point, matching locations remain visible with distance unavailable.
-
-Store-specific listings own price, name, unit, listing state, and available stock. Unlisting keeps historical orders and reservations. The list planner prices from PostgreSQL. Travel and extra-stop weights rank options and are not added to the amount payable. The split planner checks up to 12 nearby stores, comparing pairs and triples against current available quantities.
-
-#### Run locally
-
-1. In two terminals at the repository root, run `npm ci --prefix backend` and `npm ci --prefix frontend`.
-2. For a fresh config, run `cp -n backend/.env.example backend/.env`. Set `PG_HOST`, `PG_PORT`, `PG_USER`, `PG_PASSWORD`, and `PG_DATABASE`. Set `PG_SSL=false` for a local PostgreSQL instance without TLS. For the pickup-only walkthrough on a local database, set `KAFKA_ENABLED=false` and `OPENSEARCH_ENABLED=false`. For the original online checkout, use your Razorpay Test Mode keys and your existing Aiven settings.
-3. Start the backend with `npm run dev --prefix backend`. Startup applies additive migrations. Start the frontend with `npm run dev --prefix frontend` and open the URL printed by Vite. Its default API proxy points to port 5001.
-4. Run `TEST_DATABASE_URL=postgres://USER:PASSWORD@127.0.0.1:5432/DATABASE npm --prefix backend test` using a local PostgreSQL database where the user can create schemas. The integration test creates and removes its own schema. Without the variable, only the planner unit tests run.
-5. For the iPhone app, rebuild its web assets with `NUKKAD_API_URL=https://YOUR-HTTPS-API sh ios/build-storefront.sh` and reinstall from Xcode. The default URL still targets the previously deployed API. Use an HTTPS API running this version to exercise the new features on iPhone.
-
-#### Demo Lane walkthrough
-
-1. Visit **Merchant sign in → Create a merchant account and store** in separate browser profiles for **Milk Shop** and **Bread Shop**. Give each the locality and address **Demo Lane**, city **Bengaluru**, PIN **560095**, and example demo coordinates **12.93, 77.62**. Sign up two separate shopper accounts.
-2. Under **Shelf Stock Manager → Manage listings → Add a listing**, create Milk (carton, ₹40, quantity 2) in Milk Shop and Bread (loaf, ₹30, quantity 1) in Bread Shop. Keep both listed.
-3. As a shopper, open the **Nukkad Assistant** message bubble, enter `Demo Lane` as the location and send `2 milk and bread` in chat. The comparison opens automatically. Each single store shows a missing item and the complete split shows ₹110. Reserve the split.
-4. Keep the shopper’s **My orders** open while each merchant opens **Incoming Orders**. Accept the Milk request, mark it ready, then collect it with the shopper’s six-digit code. Reject Bread or cancel it from My orders. Bread returns to available stock once. Collected Milk remains deducted.
-5. To show the last-unit race, compare `bread` as both shoppers while one loaf is available, then submit both reservations. One succeeds. The test also covers price-change rollback, retrying the same request key, and cross-store order access.
-
-#### Shopping chatbot and Buy from store
-
-Set `GEMINI_API_KEY`, `GEMINI_MODEL` (defaults to `gemini-3.1-flash-lite`), and `SARVAM_API_KEY` in the backend environment. Sign in as a shopper, open the **Nukkad Assistant** message bubble, enter your location or use GPS, and send a message. English mode sends the message directly to Gemini. Automatic detection and the other language modes translate the message with Sarvam AI first. Use the storefront search to browse individual products when the assistant is unavailable.
-
-With Razorpay Test Mode configured, choose **Buy from [store]**, enter your phone number, and complete that store's payment for pickup. Return to the planner and choose **Check payment** before buying from the next store. **Cancel checkout** releases an unpaid hold through the existing checkout flow. **Reserve and pay at pickup** remains available as a separate option.
+Built by **Team LastMinute** for the retail and e-commerce track.
