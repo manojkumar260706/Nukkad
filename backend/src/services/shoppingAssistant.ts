@@ -29,9 +29,9 @@ async function providerRequest(url: string, headers: Record<string, string>, bod
 }
 
 export async function interpretShoppingRequest(input: z.infer<typeof assistantInput>) {
-  const grokKey = process.env.XAI_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
   const sarvamKey = process.env.SARVAM_API_KEY;
-  if (!grokKey || (input.language !== 'en-IN' && !sarvamKey)) {
+  if (!geminiKey || (input.language !== 'en-IN' && !sarvamKey)) {
     throw new Error('The shopping assistant is missing its provider configuration. You can still enter a shopping list directly.');
   }
   const message = input.language === 'en-IN' ? input.message : z.object({
@@ -41,20 +41,46 @@ export async function interpretShoppingRequest(input: z.infer<typeof assistantIn
     model: 'mayura:v1', numerals_format: 'international'
   }, 'Sarvam AI')).translated_text;
 
-  const result = await providerRequest('https://api.x.ai/v1/chat/completions', { Authorization: `Bearer ${grokKey}` }, {
-    model: process.env.XAI_MODEL || 'grok-4.3',
-    response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: 'You extract shopping items for a grocery planner. Return a JSON object with items (an array of at most 25 objects with name and integer quantity) and question (a string, empty when ready). Interpret the latest message as edits to the previous list when applicable. Use concise English catalog product names with no quantities or delimiters in the name. Use 1 when a quantity is omitted. For a clear meal request suggest ingredients. For unclear or non-shopping requests ask a brief clarifying question and preserve the previous items. Never invent stores, prices or stock, and never claim to buy anything.' },
-      { role: 'user', content: JSON.stringify({ previous: input.previous, lastTurn: input.lastTurn, message }) }
-    ]
-  }, 'Grok');
+  const model = process.env.GEMINI_MODEL?.trim() || 'gemini-3.1-flash-lite';
+  const result = await providerRequest(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    { 'x-goog-api-key': geminiKey },
+    {
+      systemInstruction: { parts: [{ text: 'You extract shopping items for a grocery planner. Return a JSON object with items (an array of at most 25 objects with name and integer quantity) and question (a string, empty when ready). Interpret the latest message as edits to the previous list when applicable. Use concise English catalog product names with no quantities or delimiters in the name. Use 1 when a quantity is omitted. For a clear meal request suggest ingredients. For unclear or non-shopping requests ask a brief clarifying question and preserve the previous items. Never invent stores, prices or stock, and never claim to buy anything.' }] },
+      contents: [{ role: 'user', parts: [{ text: JSON.stringify({
+        previous: input.previous, lastTurn: input.lastTurn, message
+      }) }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: {
+          type: 'object',
+          properties: {
+            items: {
+              type: 'array', maxItems: 25,
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  quantity: { type: 'integer', minimum: 1, maximum: 999 }
+                },
+                required: ['name', 'quantity']
+              }
+            },
+            question: { type: 'string' }
+          },
+          required: ['items', 'question']
+        }
+      }
+    },
+    'Gemini'
+  );
 
   try {
-    const response = z.object({ choices: z.array(z.object({
-      message: z.object({ content: z.string().max(6000) })
+    const response = z.object({ candidates: z.array(z.object({
+      content: z.object({ parts: z.array(z.object({ text: z.string(), thought: z.boolean().optional() })) })
     })).min(1) }).parse(result);
-    return reply.parse(JSON.parse(response.choices[0].message.content));
+    const json = response.candidates[0].content.parts.filter(part => !part.thought).map(part => part.text).join('');
+    return reply.parse(JSON.parse(json));
   } catch {
     throw new Error('The shopping assistant returned an unreadable list. Try rephrasing or enter the list directly.');
   }

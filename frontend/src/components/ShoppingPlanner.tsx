@@ -233,7 +233,7 @@ export function ShoppingPlanner() {
     <section className="space-y-3 rounded-2xl border bg-white p-4">
       <h2 className="font-serif text-xl font-bold">Shopping chatbot</h2>
       {customer ? <>
-        <p className="text-sm text-stone-600">Tell us what you need, then refine the list with messages like “add 2 eggs.” Set your shopping location below. Messages are processed by Grok and, for translation, Sarvam AI.</p>
+        <p className="text-sm text-stone-600">Tell us what you need, then refine the list with messages like “add 2 eggs.” Set your shopping location below. Messages are processed by Gemini and, for translation, Sarvam AI.</p>
         {chat.length > 0 && <div aria-live="polite" className="max-h-64 space-y-3 overflow-auto rounded bg-stone-50 p-3 text-sm">
           {chat.map((turn, index) => <div key={index} className="space-y-1">
             <p><strong>You</strong> · {turn.request}</p>

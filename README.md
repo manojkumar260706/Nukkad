@@ -200,6 +200,6 @@ Store-specific listings own price, name, unit, listing state, and available stoc
 
 #### Shopping chatbot and Buy from store
 
-Set `XAI_API_KEY`, `XAI_MODEL` (defaults to `grok-4.3`), and `SARVAM_API_KEY` in the backend environment. Sign in as a shopper, open **Plan a shopping list**, enter your location or use GPS, and send a message. English mode sends the message directly to Grok. Automatic detection and the other language modes translate the message with Sarvam AI first. Enter an ordinary shopping list when the assistant is unavailable.
+Set `GEMINI_API_KEY`, `GEMINI_MODEL` (defaults to `gemini-3.1-flash-lite`), and `SARVAM_API_KEY` in the backend environment. Sign in as a shopper, open **Plan a shopping list**, enter your location or use GPS, and send a message. English mode sends the message directly to Gemini. Automatic detection and the other language modes translate the message with Sarvam AI first. Enter an ordinary shopping list when the assistant is unavailable.
 
 With Razorpay Test Mode configured, choose **Buy from [store]**, enter your phone number, and complete that store's payment for pickup. Return to the planner and choose **Check payment** before buying from the next store. **Cancel checkout** releases an unpaid hold through the existing checkout flow. **Reserve and pay at pickup** remains available as a separate option.
