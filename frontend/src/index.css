@@ -52,7 +52,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   @keyframes landing-reveal {
-    from { opacity: 0; transform: translateY(16px); }
+    from { opacity: 0; transform: translateY(24px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
@@ -61,8 +61,8 @@
     to { opacity: 1; transform: scale(1); }
   }
 
-  .landing-reveal { animation: landing-reveal 540ms cubic-bezier(.22,.61,.36,1) both; }
-  .landing-reveal-copy { animation-delay: 90ms; }
-  .landing-reveal-actions { animation-delay: 165ms; }
+  .landing-reveal { animation: landing-reveal 680ms cubic-bezier(.22,.61,.36,1) both; }
+  .landing-reveal-copy { animation-delay: 150ms; }
+  .landing-reveal-actions { animation-delay: 270ms; }
   .landing-photo { animation: landing-photo 650ms ease-out both; }
 }

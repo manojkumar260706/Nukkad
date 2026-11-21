@@ -31,11 +31,11 @@ export function LandingPage() {
     try {
       await overlay.animate([
         { transform: 'translate3d(0, 0, 0) scale(1)', borderRadius: '32px' },
-        { transform: `translate3d(${x}px, ${y}px, 0) scale(${scale * 1.05})`, borderRadius: '0px' }
-      ], { duration: 460, easing: 'cubic-bezier(.65,0,.22,1)', fill: 'forwards' }).finished;
+        { transform: `translate3d(${x}px, ${y}px, 0) scale(${scale * 1.14})`, borderRadius: '0px' }
+      ], { duration: 720, easing: 'cubic-bezier(.46,.02,.2,1)', fill: 'forwards' }).finished;
       window.scrollTo(0, 0);
       navigate('/shop', { flushSync: true });
-      await overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: 'ease-out', fill: 'forwards' }).finished;
+      await overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 280, easing: 'ease-out', fill: 'forwards' }).finished;
     } catch {
       navigate('/shop');
     } finally {
