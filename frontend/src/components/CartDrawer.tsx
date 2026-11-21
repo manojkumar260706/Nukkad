@@ -1,3 +1,4 @@
+import { productImage } from './productImage';
 import React, { useState } from 'react';
 import { CartItem } from '../types';
 import { X, Plus, Minus, ShoppingBag, Truck, Store as StoreIcon } from 'lucide-react';
@@ -122,7 +123,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       className="flex items-center gap-3.5 p-3 rounded-xl border border-stone-100 hover:border-stone-200 bg-stone-50/50 transition-colors"
                     >
                       <img
-                        src={product.image_url}
+                        src={productImage(product) || '/nukkad-192.png'}
+                        onError={event => {
+                          if (!event.currentTarget.src.endsWith('/nukkad-192.png')) event.currentTarget.src = '/nukkad-192.png';
+                        }}
                         alt={product.name}
                         className="w-12 h-12 object-contain rounded-lg bg-white p-1 border border-stone-200 shrink-0"
                       />

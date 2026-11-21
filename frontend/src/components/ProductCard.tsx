@@ -1,3 +1,4 @@
+import { productImage } from './productImage';
 import React from 'react';
 import { Product } from '../types';
 import { Plus, Minus, ImageOff } from 'lucide-react';
@@ -16,7 +17,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onUpdateQuantity
 }) => {
   const [failedImage, setFailedImage] = React.useState<string>();
-  const imageAvailable = product.image_url && failedImage !== product.image_url;
+  const imageUrl = productImage(product);
+  const imageAvailable = imageUrl && failedImage !== imageUrl;
   const isOutOfStock = product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= product.low_stock_threshold;
   const discountPercent = product.mrp > product.price
@@ -28,9 +30,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       {/* Product Image & Badges */}
       <div className="relative m-2 aspect-square overflow-hidden rounded-2xl bg-[#f9f6ef]">
         {imageAvailable ? <img
-          src={product.image_url}
+          src={imageUrl}
           alt={product.name}
-          onError={() => setFailedImage(product.image_url)}
+          onError={() => setFailedImage(imageUrl)}
           className="h-full w-full object-contain"
           loading="lazy"
           decoding="async"

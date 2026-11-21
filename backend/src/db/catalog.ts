@@ -60,6 +60,14 @@ export async function installSampleCatalog(client: PoolClient) {
   `, [listings]);
   await client.query(`
     UPDATE products SET image_url = '/catalog/legacy-' || substring(id FROM 6) || '.jpg'
-    WHERE id = ANY($1::text[]) AND image_url LIKE 'https://images.unsplash.com/%'
+    WHERE id = ANY($1::text[]) AND (
+      image_url LIKE 'https://images.unsplash.com/%'
+      OR image_url = '/catalog/legacy-' || substring(id FROM 6) || '.webp'
+    )
   `, [originalProducts.map(slug => `prod-${slug}`)]);
+  await client.query(`
+    UPDATE products AS product SET image_url = catalog.image
+    FROM jsonb_to_recordset($1::jsonb) AS catalog(id text, image text)
+    WHERE product.id = catalog.id AND product.image_url = replace(catalog.image, '.jpg', '.webp')
+  `, [listings]);
 }
