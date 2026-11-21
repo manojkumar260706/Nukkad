@@ -239,13 +239,20 @@ app.get('/api/products/search', async (req: Request, res: Response) => {
 
     const selectedStore = typeof storeId === 'string' ? storeId : undefined;
     const selectedCity = typeof city === 'string' ? city : undefined;
+    const location = coordinates.extend({ latitude: z.coerce.number().min(-90).max(90),
+      longitude: z.coerce.number().min(-180).max(180) }).optional().safeParse(
+      req.query.latitude === undefined && req.query.longitude === undefined ? undefined : req.query
+    );
+    if (!location.success) return res.status(400).json({ error: 'Invalid search location.' });
+    const matchListing = typeof req.query.matchListing === 'string' ? req.query.matchListing : undefined;
+    if (matchListing && !selectedStore) return res.status(400).json({ error: 'Choose a store for the matching listing.' });
     const pagination = z.object({
       page: z.coerce.number().int().min(1).max(10000).default(1),
       limit: z.coerce.number().int().min(1).max(100).default(24)
     }).safeParse({ page, limit });
     if (!pagination.success) return res.status(400).json({ error: 'Invalid result page.' });
     const filter = {
-      ...filters.data, ...pagination.data, city: selectedCity, category: typeof category === 'string' ? category : undefined,
+      ...filters.data, ...pagination.data, ...location.data, matchListing, nearest: req.query.nearest === 'true', city: selectedCity, category: typeof category === 'string' ? category : undefined,
       inStockOnly: inStockOnly === 'true', sort: typeof sort === 'string' ? sort : undefined
     };
     const rawQuery = typeof q === 'string' ? q : '';

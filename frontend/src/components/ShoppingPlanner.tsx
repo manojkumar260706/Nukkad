@@ -122,7 +122,7 @@ export function ShoppingPlanner() {
       <h2 className="font-serif text-xl font-bold">Nearby stores</h2>
       {!nearby.length ? <p>No matches. Try a locality, city, address or PIN.</p> : <ul className="mt-2 grid gap-2 sm:grid-cols-2">
         {nearby.map(store => <li key={store.id} className="rounded border bg-white p-3">
-          <Link className="font-semibold underline" to={`/?store=${encodeURIComponent(store.id)}`}>{store.name}</Link>
+          <p className="font-semibold">{store.name}</p>
           <p className="text-xs">{store.address || `${store.locality}, ${store.city}`} · {store.distance === null ? 'Distance unavailable' : `${store.distance.toFixed(1)} km estimated`}</p>
         </li>)}
       </ul>}

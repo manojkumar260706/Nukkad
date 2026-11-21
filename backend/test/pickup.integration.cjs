@@ -59,7 +59,7 @@ test('PostgreSQL pickup lifecycle, concurrent stock, split rollback, idempotency
     const result = await request(store ? '/auth/merchant/register' : '/auth/register', {
       body: { name, email: `${name.toLowerCase().replaceAll(' ', '')}@example.test`, password: 'local-test-password',
         ...(store && { store: { name, locality: 'Demo Lane', city: 'Bengaluru', address: 'Demo Lane, Bengaluru',
-          pin: '560095', location: { latitude: 12.93, longitude: 77.62 } } }) }
+          pin: '560095', location: { latitude: name === 'Bread Shop' ? 12.94 : 12.93, longitude: 77.62 } } }) }
     });
     assert.equal(result.code, 201, JSON.stringify(result.data));
     return result.data;
@@ -86,6 +86,22 @@ test('PostgreSQL pickup lifecycle, concurrent stock, split rollback, idempotency
   const breadListing = search.data.hits.find(product => product.product_id === breadId);
   const scoped = await request(`/products/search?storeId=${breadListing.store_id}&q=bread%20under%2040`);
   assert.deepEqual(scoped.data.hits.map(product => product.product_id), [breadId]);
+
+  const secondMilkId = await list(bread, 'Milk', 1, 35);
+  const nearest = await request('/products/search?nearest=true&q=milk&latitude=12.93&longitude=77.62');
+  const demoMilk = nearest.data.hits.filter(hit => [milkId, secondMilkId].includes(hit.product_id));
+  assert.deepEqual(demoMilk.map(hit => hit.product_id), [milkId]);
+  const withoutLocation = await request('/products/search?nearest=true&q=milk');
+  assert.deepEqual(withoutLocation.data.hits.filter(hit => [milkId, secondMilkId].includes(hit.product_id))
+    .map(hit => hit.product_id), [secondMilkId]);
+  const alternate = await request(`/products/search?storeId=${breadListing.store_id}&matchListing=${search.data.hits.find(hit => hit.product_id === milkId).id}&inStockOnly=true`);
+  assert.deepEqual(alternate.data.hits.map(hit => hit.product_id), [secondMilkId]);
+  const milkListing = search.data.hits.find(hit => hit.product_id === milkId);
+  const noAlternate = await request(`/products/search?storeId=${milkListing.store_id}&matchListing=${breadListing.id}&inStockOnly=true`);
+  assert.deepEqual(noAlternate.data.hits, []);
+  assert.equal((await request(`/inventory/listings/${secondMilkId}`, { method: 'PUT', token: bread.token, body: {
+    name: 'Milk', unit: 'carton', price: 35, stock: 1, expectedStock: 1, listed: false
+  } })).code, 200);
 
   const find = body => request('/shopping-plan', { body: { list: '2 milk and bread', location: 'Demo Lane', ...body } });
   const plan = await find();

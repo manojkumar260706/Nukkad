@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Category, Product, CartItem, Store } from '../types';
 import {
   fetchCategories,
@@ -35,10 +35,17 @@ export const StorefrontPage: React.FC = () => {
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isRaceModalOpen, setIsRaceModalOpen] = useState<boolean>(false);
 
-  const [params, setParams] = useSearchParams();
-  const selectedStoreId = params.get('store') || undefined;
+  const [location, setLocation] = useState<{ latitude: number; longitude: number }>();
   const [stores, setStores] = useState<Store[]>([]);
-  const [blockedStoreId, setBlockedStoreId] = useState<string>();
+  const [cartNotice, setCartNotice] = useState('');
+  const [checkingStore, setCheckingStore] = useState(false);
+  useEffect(() => {
+    let active = true;
+    navigator.geolocation?.getCurrentPosition(({ coords }) => {
+      if (active) setLocation({ latitude: coords.latitude, longitude: coords.longitude });
+    }, () => {}, { timeout: 5000, maximumAge: 60000 });
+    return () => { active = false; };
+  }, []);
   const cartStoreId = cart[0]?.product.store_id;
   const cartStore = stores.find(store => store.id === cartStoreId);
   const cartStoreName = cart[0]?.product.store_name || cartStore?.name || 'your current store';
@@ -61,7 +68,8 @@ export const StorefrontPage: React.FC = () => {
     try {
       const data = await searchProductsApi({
         q: searchQuery,
-        storeId: selectedStoreId,
+        nearest: true,
+        ...location,
         page,
         category: selectedCategory,
         minPrice: filters.minPrice === '' ? undefined : Number(filters.minPrice),
@@ -81,7 +89,7 @@ export const StorefrontPage: React.FC = () => {
     } finally {
       if (request === searchRequest.current) setIsSearching(false);
     }
-  }, [searchQuery, selectedCategory, filters, selectedStoreId, page]);
+  }, [searchQuery, selectedCategory, filters, location, page]);
 
   useEffect(() => {
     searchRequest.current++;
@@ -112,19 +120,36 @@ export const StorefrontPage: React.FC = () => {
   }, [executeSearch]);
 
   // Cart operations
-  const handleAddToCart = (product: Product) => {
-    if (cartStoreId && cartStoreId !== product.store_id) {
-      setBlockedStoreId(product.store_id);
-      return;
+  const handleAddToCart = async (product: Product) => {
+    if (checkingStore) return;
+    setCartNotice('');
+    const needsMatch = Boolean(cartStoreId && cartStoreId !== product.store_id);
+    if (needsMatch && cartStoreId) {
+      setCheckingStore(true);
+      try {
+        const { hits } = await searchProductsApi({ storeId: cartStoreId, matchListing: product.id, inStockOnly: true });
+        const match = hits[0];
+        if (!match) {
+          setCartNotice(`You can only check out from one store. ${cartStoreName} has no matching item in stock for ${product.name}.`);
+          return;
+        }
+        product = match;
+        setCartNotice(`Using ${match.name} from ${cartStoreName} at ₹${match.price} per ${match.unit}.`);
+      } catch {
+        setCartNotice(`Could not check availability at ${cartStoreName}. Try again.`);
+        return;
+      } finally {
+        setCheckingStore(false);
+      }
     }
-    setBlockedStoreId(undefined);
     setCart((prev) => {
-      if (prev.length && prev[0].product.store_id !== product.store_id) return prev;
+      if ((needsMatch || prev.length) && prev[0]?.product.store_id !== product.store_id) return prev;
       const existing = prev.find((item) => item.product.product_id === product.product_id);
       if (existing) {
+        if (existing.quantity >= product.stock) return prev;
         return prev.map((item) =>
           item.product.product_id === product.product_id
-            ? { ...item, quantity: Math.min(item.quantity + 1, product.stock) }
+            ? { product, quantity: item.quantity + 1 }
             : item
         );
       }
@@ -143,7 +168,7 @@ export const StorefrontPage: React.FC = () => {
     });
   };
 
-  const handleClearCart = () => setCart([]);
+  const handleClearCart = () => { setCart([]); setCartNotice(''); };
 
   const handlePlaceOrder = async (orderData: {
     customerName: string;
@@ -216,7 +241,7 @@ export const StorefrontPage: React.FC = () => {
       <div>
         {/* Clean Shopper Navbar */}
         <Navbar
-          location={selectedStoreId ? stores.find(store => store.id === selectedStoreId)?.locality : 'All stores'}
+          location={location ? 'Near you' : 'All stores'}
           cartCount={cartCount}
           cartTotal={cartTotal}
           onOpenCart={() => setIsCartOpen(true)}
@@ -225,19 +250,7 @@ export const StorefrontPage: React.FC = () => {
 
         {/* Clean Search & Category Filter */}
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-          <label className="flex items-center gap-2 font-semibold">
-            <span>Store</span>
-            <select className="rounded-lg border border-stone-300 bg-white px-3 py-2" value={selectedStoreId || ''} onChange={event => {
-              const next = new URLSearchParams(params);
-              if (event.target.value) next.set('store', event.target.value);
-              else next.delete('store');
-              setPage(1);
-              setParams(next);
-            }}>
-              <option value="">All stores</option>
-              {stores.map(store => <option key={store.id} value={store.id}>{store.name} · {store.locality}</option>)}
-            </select>
-          </label>
+          <p className="text-stone-600">{location ? 'Nearest available listing shown for each product' : 'All stores · Allow location access to see the nearest listings'}</p>
           <Link to="/plan" className="rounded-lg border border-nukkad-800 px-3 py-2 font-semibold text-nukkad-900">Plan a shopping list</Link>
         </div>
 
@@ -323,13 +336,13 @@ export const StorefrontPage: React.FC = () => {
         {cartCount > 0 && (
           <div className="fixed bottom-4 inset-x-0 z-30 px-4 sm:px-6 pointer-events-none">
             <div className="max-w-md mx-auto pointer-events-auto">
-              {blockedStoreId && blockedStoreId !== cartStoreId && (
+              {cartNotice && (
                 <p role="alert" className="mb-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                  Your cart contains items from {cartStoreName}. Check out or clear your cart before adding items from another store.
+                  {cartNotice}
                 </p>
               )}
               <button
-                onClick={() => { setBlockedStoreId(undefined); setIsCartOpen(true); }}
+                onClick={() => { setCartNotice(''); setIsCartOpen(true); }}
                 className="w-full bg-nukkad-900 hover:bg-black text-white py-3.5 px-5 rounded-2xl shadow-xl flex items-center justify-between transition-all transform active:scale-[0.99] border border-nukkad-800"
               >
                 <div className="flex items-center gap-3">

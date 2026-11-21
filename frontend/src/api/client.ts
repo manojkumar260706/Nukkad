@@ -40,6 +40,10 @@ export async function searchProductsApi(params: {
   inStockOnly?: boolean;
   sort?: 'price-asc' | 'price-desc';
   page?: number;
+  nearest?: boolean;
+  latitude?: number;
+  longitude?: number;
+  matchListing?: string;
 }): Promise<{ hits: Product[]; total: number; source: string }> {
   const query = new URLSearchParams();
   if (params.q) query.set('q', params.q);
@@ -52,6 +56,12 @@ export async function searchProductsApi(params: {
   if (params.inStockOnly) query.set('inStockOnly', 'true');
   if (params.sort) query.set('sort', params.sort);
   if (params.page) query.set('page', String(params.page));
+  if (params.nearest) query.set('nearest', 'true');
+  if (params.latitude !== undefined && params.longitude !== undefined) {
+    query.set('latitude', String(params.latitude));
+    query.set('longitude', String(params.longitude));
+  }
+  if (params.matchListing) query.set('matchListing', params.matchListing);
 
   const res = await fetch(`${API_BASE}/api/products/search?${query.toString()}`);
   if (!res.ok) throw new Error('Search failed');
