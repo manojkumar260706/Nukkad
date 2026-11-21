@@ -1,3 +1,4 @@
+import { assistantInput, interpretShoppingRequest } from './services/shoppingAssistant';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -113,6 +114,32 @@ app.post('/api/stores/nearby', async (req, res) => {
     res.json(await nearbyStores(location, gps));
   } catch {
     res.status(400).json({ error: 'Could not find nearby stores. Check the location and try again.' });
+  }
+});
+
+const assistantRequests = new Map<string, number>();
+app.post('/api/customer/shopping-assistant', customer, async (req, res) => {
+  const input = discoveryInput.extend(assistantInput.shape).safeParse(req.body);
+  if (!input.success || (!input.data.location && !input.data.gps)) {
+    return res.status(400).json({ error: 'Enter a shopping request and a location or use GPS.' });
+  }
+  const id: string = res.locals.user.id;
+  const now = Date.now();
+  for (const [userId, expires] of assistantRequests) {
+    if (expires <= now) assistantRequests.delete(userId);
+  }
+  if (assistantRequests.has(id)) return res.status(429).json({ error: 'Wait a moment before sending another message.' });
+  assistantRequests.set(id, now + 5000);
+  try {
+    const reply = await interpretShoppingRequest(input.data);
+    const { location, gps } = input.data;
+    const plans = reply.items.length && !reply.question
+      ? await planShoppingList(reply.items.map(item => `${item.quantity} ${item.name}`).join(', '), location, gps)
+      : null;
+    return res.json({ ...reply, plans });
+  } catch (error) {
+    return res.status(502).json({ error: error instanceof Error && !(error instanceof z.ZodError)
+      ? error.message : 'The assistant could not read that request. Try entering a shopping list directly.' });
   }
 });
 

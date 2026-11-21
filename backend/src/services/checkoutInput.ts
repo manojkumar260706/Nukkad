@@ -11,7 +11,8 @@ const checkoutInput = z.object({
   address: z.string().trim().min(8, 'Enter your full delivery address.').max(500, 'Enter a delivery address of 500 characters or fewer.').optional(),
   postalCode: z.string().trim().regex(/^[1-9]\d{5}$/, 'Enter a valid six-digit delivery PIN code.').optional(),
   items: z.array(z.object({
-    productId: z.string().min(1).max(50), quantity: z.number().int().min(1).max(999)
+    productId: z.string().min(1).max(50), quantity: z.number().int().min(1).max(999),
+    expectedPrice: z.number().finite().nonnegative().optional()
   })).min(1).max(50)
 });
 

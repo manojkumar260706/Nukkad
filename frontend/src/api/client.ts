@@ -128,7 +128,7 @@ export function createOrderApi(orderData: {
   deliveryType: 'delivery' | 'pickup';
   address?: string;
   postalCode?: string;
-  items: { productId: string; quantity: number }[];
+  items: { productId: string; quantity: number; expectedPrice?: number }[];
 }) {
   return accountRequest<{ order: CustomerOrder }>('customer', '/api/orders', 'POST', orderData);
 }
@@ -236,6 +236,10 @@ export const findNearbyStores = (data: { location: string; gps?: Coordinates }) 
   postJson<NearbyStore[]>('/api/stores/nearby', data);
 export const findShoppingPlans = (data: { list: string; location: string; gps?: Coordinates }) =>
   postJson<{ stores: NearbyStore[]; unmatched: ShoppingItem[]; singles: ShoppingPlan[]; split: ShoppingPlan | null }>('/api/shopping-plan', data);
+export const askShoppingAssistant = (data: { message: string; language: string; previous: ShoppingItem[]; lastTurn?: { request: string; reply: string }; location: string; gps?: Coordinates }) =>
+  accountRequest<{ items: ShoppingItem[]; question: string; plans: Awaited<ReturnType<typeof findShoppingPlans>> | null }>(
+    'customer', '/api/customer/shopping-assistant', 'POST', data
+  );
 export const reserveBaskets = (requestKey: string, baskets: PickupBasket[]) =>
   accountRequest<{ orders: { id: string; storeId: string }[] }>('customer', '/api/customer/pickup-reservations', 'POST', {
     requestKey,

@@ -23,6 +23,15 @@ export async function createOrderAtomic(input: CreateOrderInput) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (input.checkout && !input.payAtPickup) {
+      const { customerId } = input.checkout;
+      await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [customerId]);
+      const active = await client.query(`
+        SELECT 1 FROM orders WHERE customer_id=$1 AND payment_status='awaiting_payment'
+          AND hold_until > NOW() LIMIT 1
+      `, [customerId]);
+      if (active.rowCount) throw new Error('You already have a checkout in progress. Finish or cancel it in My orders.');
+    }
     const order = await createOrderInTransaction(client, input);
     await client.query('COMMIT');
     triggerOutboxRelay();

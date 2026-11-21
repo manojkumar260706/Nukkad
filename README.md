@@ -197,3 +197,9 @@ Store-specific listings own price, name, unit, listing state, and available stoc
 3. As a shopper, open **Plan a shopping list**, type `2 milk and bread` and `Demo Lane`, then click **Compare baskets**. Each single store shows a missing item and the complete split shows ₹110. Reserve the split.
 4. Keep the shopper’s **My orders** open while each merchant opens **Incoming Orders**. Accept the Milk request, mark it ready, then collect it with the shopper’s six-digit code. Reject Bread or cancel it from My orders. Bread returns to available stock once. Collected Milk remains deducted.
 5. To show the last-unit race, compare `bread` as both shoppers while one loaf is available, then submit both reservations. One succeeds. The test also covers price-change rollback, retrying the same request key, and cross-store order access.
+
+#### Shopping chatbot and Buy from store
+
+Set `XAI_API_KEY`, `XAI_MODEL` (defaults to `grok-4.3`), and `SARVAM_API_KEY` in the backend environment. Sign in as a shopper, open **Plan a shopping list**, enter your location or use GPS, and send a message. English mode sends the message directly to Grok. Automatic detection and the other language modes translate the message with Sarvam AI first. Enter an ordinary shopping list when the assistant is unavailable.
+
+With Razorpay Test Mode configured, choose **Buy from [store]**, enter your phone number, and complete that store's payment for pickup. Return to the planner and choose **Check payment** before buying from the next store. **Cancel checkout** releases an unpaid hold through the existing checkout flow. **Reserve and pay at pickup** remains available as a separate option.
